@@ -499,16 +499,20 @@ function resolveTouches(world, dt) {
     if (!gk || gk.sentOff) continue;
     const depth = (gk.x - ownGoalX(team)) * team.side;
     const inArea = depth < PITCH.boxDepth + 0.6 && Math.abs(gk.y) < PITCH.boxHalfW + 0.6;
-    const d = dist(gk.x, gk.y, b.x, b.y);
+    // Reach has to be three dimensional, or a ball lifted into the top
+    // corner is treated as if it were rolling along the floor.
+    const handZ = gk.state === 'dive' ? 0.72 : 1.15;
+    const dz = Math.max(0, b.z - handZ) * 1.15;
+    const d = Math.hypot(b.x - gk.x, b.y - gk.y, dz);
     const wasShot = b.kickKind === 'shot';
-    const reach = (gk.state === 'dive' ? PLAY.gkReach : PLAY.gkHandleR + 0.55)
-      * (0.8 + gk.k.gkReflex * 0.35);
+    const reach = (gk.state === 'dive' ? PLAY.gkReach : PLAY.gkHandleR + 0.38)
+      * (0.88 + gk.k.gkReflex * 0.22);
     if (d < reach && b.z < 2.5 && inArea && gk.touchCd <= 0 && b.lastTouch !== gk) {
       const speed = Math.hypot(b.vx, b.vy, b.vz);
       const hold = gk.k.gkHand * 1.0 + 0.2 - speed / 34
         + (gk.state === 'dive' ? -0.26 : 0.08);
       const difficulty = clamp01((speed - 9) / 24);
-      const beaten = world.rng.chance(difficulty * (1.15 - gk.k.gkReflex * 0.5) * 0.6);
+      const beaten = world.rng.chance(difficulty * (1.15 - gk.k.gkReflex * 0.5) * 0.5);
       if (beaten && speed > 15) {
         // Fingertips only — the ball is deflected on.
         const away = norm2(b.vx, b.vy);

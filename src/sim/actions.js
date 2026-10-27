@@ -47,6 +47,16 @@ export function laneClear(world, teamIdx, ax, ay, bx, by, pad = 1.05) {
   return len < 1.5 ? 1 : worst;
 }
 
+/** Launch speed so a rolling ball covers `d` metres in `t` seconds. */
+export function speedForTravel(d, t) {
+  let v = d / Math.max(t, 0.1);
+  for (let i = 0; i < 3; i++) {
+    const acc = BALL.rollDrag + 0.055 * v;
+    v = (d + 0.5 * acc * t * t) / Math.max(t, 0.1);
+  }
+  return v;
+}
+
 /** Time for a ball leaving at `v0` to roll `d` metres. */
 function ballTime(v0, d) {
   const a = BALL.rollDrag + 0.055 * v0;
@@ -117,7 +127,8 @@ function offsideWouldBe(world, team, x) {
  * Score every team-mate as a pass receiver.
  * mode: 'ground' | 'through' | 'lob'
  */
-export function rankPassOptions(world, p, dirX, dirY, mode = 'ground', coneDeg = 70) {
+export function rankPassOptions(world, p, dirX, dirY, mode = 'ground', coneDeg = 70,
+  dirWeight = 0.9) {
   const team = world.teams[p.team];
   const mates = team.players;
   const hasDir = Math.hypot(dirX, dirY) > 0.2;
@@ -162,19 +173,33 @@ export function rankPassOptions(world, p, dirX, dirY, mode = 'ground', coneDeg =
     const gain = (toGoalNow - toGoalNew) / 28;
     const space = spaceAt(world, p.team, tx, ty, 8);
     const risk = mode === 'through' ? 0.62 : mode === 'lob' ? 0.8 : 1;
-    const offside = offsideWouldBe(world, team, mode === 'through' ? tx : m.x);
+    // Offside is judged where the receiver *is* when the ball is played, not
+    // where they are running to — that is exactly what a through ball is.
+    const offside = offsideWouldBe(world, team, m.x);
     const distCost = mode === 'through'
       ? clamp01(1 - Math.abs(d - 22) / 34)
       : clamp01(1 - Math.abs(d - 15) / 34);
 
     let score = 0;
-    score += clear * 2.2 * risk;
-    score += space * 1.0;
-    score += gain * 2.4 + prog * 1.25;
-    if (prog < 0) score += prog * 1.3;          // going backwards must be earned
-    score += distCost * 0.65;
-    score += align * 0.9 * (hasDir ? 1 : 0);
-    score += (m.k.dribble + m.k.shoot) * 0.22;
+    const userAim = hasDir && dirWeight > 2;
+    if (userAim) {
+      // The player pointed somewhere: honour that first. Where the engine
+      // would *like* to pass barely matters.
+      const al = clamp01((align - cone) / Math.max(1e-3, 1 - cone));
+      score += Math.pow(al, 1.5) * dirWeight;
+      score += clamp01(1 - Math.abs(d - 14) / 26) * 2.2;
+      score += clear * 2.0 * risk;
+      score += space * 0.6;
+      score += (gain * 2.4 + prog * 1.25) * 0.22;
+    } else {
+      score += clear * 2.2 * risk;
+      score += space * 1.0;
+      score += gain * 2.4 + prog * 1.25;
+      if (prog < 0) score += prog * 1.3;        // going backwards must be earned
+      score += distCost * 0.65;
+      if (hasDir) score += align * dirWeight;
+      score += (m.k.dribble + m.k.shoot) * 0.22;
+    }
     if (m.isGK) score -= 2.6;
     if (offside) score -= 4.2;
     if (mode === 'through') score += clamp01((toGoalNew < 30 ? 1 : 0)) * 0.9;
@@ -188,8 +213,9 @@ export function rankPassOptions(world, p, dirX, dirY, mode = 'ground', coneDeg =
   return out;
 }
 
-export function pickPassTarget(world, p, dirX, dirY, mode = 'ground', coneDeg = 70) {
-  const list = rankPassOptions(world, p, dirX, dirY, mode, coneDeg);
+export function pickPassTarget(world, p, dirX, dirY, mode = 'ground', coneDeg = 70,
+  dirWeight = 0.9) {
+  const list = rankPassOptions(world, p, dirX, dirY, mode, coneDeg, dirWeight);
   return list.length ? list[0] : null;
 }
 
@@ -217,8 +243,9 @@ function release(world, p, opts) {
 export function doPass(world, p, { dirX, dirY, power = 0.6, mode = 'ground',
   target = null, assist = 1 }) {
   const team = world.teams[p.team];
+  const aimed = Math.hypot(dirX, dirY) > 0.2;
   const opt = target || pickPassTarget(world, p, dirX, dirY, mode,
-    mode === 'through' ? 55 : 72);
+    mode === 'through' ? 62 : 75, aimed ? 5.0 : 0.9);
   const pr = pressureOn(world, p);
   const skill = p.k.pass * 0.7 + p.k.vision * 0.3;
   let aimX, aimY, dist2d;
@@ -251,13 +278,12 @@ export function doPass(world, p, { dirX, dirY, power = 0.6, mode = 'ground',
   let speed;
   if (mode === 'lob') speed = clamp(Math.sqrt(dist2d * 11.2) * 1.14, 11, 28);
   else if (mode === 'through') {
-    // Weight it so the runner gets there at the same moment the ball does.
+    // Weight it so the runner arrives just as the ball does.
     const m = opt && opt.m;
     const runnerT = m
-      ? dist(m.x, m.y, opt.tx, opt.ty) / Math.max(maxSpeed(m, true), 1) + 0.12
+      ? dist(m.x, m.y, opt.tx, opt.ty) / Math.max(maxSpeed(m, true), 1) + 0.3
       : dist2d / 9;
-    const avg = dist2d / clamp(runnerT, 0.5, 3.0);
-    speed = clamp(avg * 1.38, 9.5, 26);
+    speed = clamp(speedForTravel(dist2d, clamp(runnerT, 0.55, 2.8)), 9.5, 26);
   }
   else speed = clamp(dist2d * 0.90 + 4.6, PLAY.passMin, PLAY.passMax);
   speed *= lerp(0.88, 1.12, power) * lerp(0.94, 1.06, skill);
@@ -290,29 +316,41 @@ export function doShot(world, p, { power = 1, aim = null, dirX = 0, dirY = 0,
   const skill = p.k.shoot * 0.76 + p.k.strength * 0.1 + p.k.dribble * 0.14;
 
   // Target point inside the goal.
-  let ty, tz;
+  const raw = norm2(dirX, dirY);
+  let ty, tz, assisted = false;
   if (aim !== null) {
+    // Manual aim: the stick places the ball across the mouth.
     ty = aim * (PITCH.goalHalf - 0.42);
     tz = lerp(0.35, 1.9, clamp01(power)) * (chip ? 1.25 : 1);
   } else {
-    // AI: pick the corner the keeper is furthest from.
-    const side = gk ? (gk.y > 0 ? -1 : 1) : (world.rng.chance(0.5) ? 1 : -1);
-    const corner = (PITCH.goalHalf - 0.5) * side * lerp(0.35, 1, skill);
-    ty = corner;
-    tz = finesse ? 1.55 : lerp(0.45, 1.55, skill * 0.8 + world.rng.range(0, 0.2));
+    assisted = true;
+    // Assisted / AI: pick a corner. Leaning the stick chooses the side,
+    // otherwise aim away from the keeper.
+    const lean = raw.m > 0.25 ? raw.y : 0;
+    const side = Math.abs(lean) > 0.3 ? Math.sign(lean)
+      : (gk ? (gk.y > 0 ? -1 : 1) : (world.rng.chance(0.5) ? 1 : -1));
+    // Less precise the further out we are.
+    const reachFactor = clamp01(1 - (d - 14) / 46);
+    ty = (PITCH.goalHalf - 0.45) * side * lerp(0.45, 1, skill) * lerp(0.62, 1, reachFactor);
+    // Better finishers lift it over the keeper more often.
+    const high = world.rng.chance(0.22 + skill * 0.3);
+    tz = finesse ? 1.65
+      : high ? lerp(1.3, 2.05, skill * 0.7 + world.rng.range(0, 0.3))
+        : lerp(0.3, 1.1, world.rng.range(0, 1));
   }
   const dirToGoal = norm2(goal.x - p.x, ty - p.y);
-  const raw = norm2(dirX, dirY);
+  // An assisted shot commits to the chosen corner; blending the raw stick
+  // direction back in would drag every shot into the keeper's chest.
   const w = clamp01(assist * 0.9);
-  let ax = raw.m > 0.25 ? lerp(raw.x, dirToGoal.x, w) : dirToGoal.x;
-  let ay = raw.m > 0.25 ? lerp(raw.y, dirToGoal.y, w) : dirToGoal.y;
+  let ax = (raw.m > 0.25 && !assisted) ? lerp(raw.x, dirToGoal.x, w) : dirToGoal.x;
+  let ay = (raw.m > 0.25 && !assisted) ? lerp(raw.y, dirToGoal.y, w) : dirToGoal.y;
 
   const errScale = p.team === world.userTeam
     ? (world.diff ? world.diff.userErr : 1)
     : (world.diff ? world.diff.aiShotErr : 1);
   const longRange = clamp01((d - 17) / 26);
-  const errDeg = PLAY.shotErrDeg * (1 - skill * 0.72) * (0.4 + pr * 1.05)
-    * (1 + longRange * 0.75) * errScale
+  const errDeg = PLAY.shotErrDeg * (1 - skill * 0.72) * (0.52 + pr * 1.05)
+    * (1 + longRange * 2.4) * errScale
     * (p.state === 'slide' ? 2 : 1);
   const err = rad(world.rng.gauss() * errDeg);
   const ca = Math.cos(err), sa = Math.sin(err);
@@ -496,8 +534,10 @@ export function attemptTackle(world, p) {
   }
   const atk = victim.k.dribble * 0.62 + victim.k.strength * 0.23 + victim.k.pace * 0.15;
   const def = p.k.tackle * 0.68 + p.k.strength * 0.2 + p.k.pace * 0.12;
+  // Positive dot => the victim is running away from us, i.e. we are chasing
+  // from behind, which is the challenge most likely to be mistimed.
   const behind = ((victim.x - p.x) * Math.cos(victim.facing)
-    + (victim.y - p.y) * Math.sin(victim.facing)) < -0.1;
+    + (victim.y - p.y) * Math.sin(victim.facing)) > 0.1;
   const diff = def - atk + (behind ? -0.12 : 0.08) + world.rng.gauss() * 0.13;
   const scale = p.team === world.userTeam ? 1 : (world.diff ? world.diff.aiSkill : 1);
   if (diff * scale > 0.02) {

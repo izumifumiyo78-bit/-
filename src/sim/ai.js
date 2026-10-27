@@ -607,15 +607,17 @@ function thinkGK(world, p, dt) {
       // new strike: start the clock and commit to a read of where it is going
       p.ai.readKick = b2.kickT;
       p.ai.readAt = world.t + lerp(0.30, 0.11, reflex);
-      const err = (0.30 + (1 - reflex) * 1.35 + speed * 0.026)
+      const err = (0.45 + (1 - reflex) * 1.6 + speed * 0.032)
         * (b2.kickKind === 'shot' ? 1 : 0.5);
       p.ai.readY = cross.y + world.rng.gauss() * err;
       p.ai.readZ = cross.z;
     }
     // Keep refining once the read is made, but never perfectly.
     const settled = world.t >= p.ai.readAt;
+    // The keeper keeps adjusting, but never fully corrects a bad read.
     const aimY = clamp(settled
-      ? lerp(p.ai.readY, cross.y, clamp01((world.t - p.ai.readAt) * 1.6)) * (0.9 + p.k.gkPos * 0.1)
+      ? lerp(p.ai.readY, cross.y,
+        Math.min(0.45, (world.t - p.ai.readAt) * 0.45)) * (0.9 + p.k.gkPos * 0.1)
       : p.y,
       -PITCH.goalHalf - 1.4, PITCH.goalHalf + 1.4);
     const standX = goalX + team.side * clamp(0.4 + cross.t * 1.1, 0.4, 2.2);

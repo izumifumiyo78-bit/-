@@ -72,7 +72,7 @@ export const PLAY = {
   shotMin: 16.0,
   shotMax: 33.0,
   shotLoft: 0.165,
-  shotErrDeg: 8.0,
+  shotErrDeg: 10.5,
   finesseCurl: 1.5,
   // --- defending ------------------------------------------------------------
   tackleR: 1.95,
@@ -88,11 +88,11 @@ export const PLAY = {
   staminaRecover: 1.05,
   staminaSpeedBite: 0.17,  // max speed lost when exhausted
   // --- keeper ---------------------------------------------------------------
-  gkReach: 2.55,
-  gkDiveSpeed: 8.2,
+  gkReach: 1.32,
+  gkDiveSpeed: 5.9,
   gkDiveTime: 0.78,
   gkRushTrigger: 13.0,
-  gkHandleR: 1.25,
+  gkHandleR: 0.98,
 };
 
 export const AI = {
