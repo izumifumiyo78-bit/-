@@ -124,6 +124,21 @@ screen('player', {
         ${p.ah && p.ah.length ? `<div class="card mt12"><div class="card-h">主要能力の推移</div><div class="card-b">${devAttrChart(p)}</div></div>` : ''}`;
     } else if (st.tab === 'stats') {
       const s = p.st;
+      // ranking helpers
+      const clubObj = p.club ? G.clubs[p.club] : null;
+      const teamPl = p.club ? Object.values(G.players).filter((x) => x.club === p.club && !x.youth) : [];
+      const lgPl = clubObj ? Object.values(G.players).filter((x) => x.club && G.clubs[x.club] && G.clubs[x.club].league === clubObj.league && !x.youth) : [];
+      const rank = (list, fn) => { const sorted = list.slice().sort((a, b) => fn(b) - fn(a)); const idx = sorted.findIndex((x) => x.id === p.id); return idx >= 0 ? idx + 1 : null; };
+      const teamGls = rank(teamPl, (x) => x.st.gls), teamAst = rank(teamPl, (x) => x.st.ast);
+      const lgGls = rank(lgPl, (x) => x.st.gls), lgAst = rank(lgPl, (x) => x.st.ast);
+      const rankBadge = (r) => r ? `<span class="pill ${r === 1 ? 'good' : r <= 3 ? '' : 'dim'}">${r}位</span>` : '-';
+      const rankCard = p.club ? `<div class="card mt12"><div class="card-h">ランキング（今季）</div><div class="card-b flush">
+        <table class="tbl"><thead><tr><th></th><th class="c">得点</th><th class="c">アシスト</th></tr></thead>
+        <tbody>
+          <tr><td class="muted small">チーム内</td><td class="c">${rankBadge(teamGls)}<span class="small muted" style="margin-left:4px">${s.gls}点</span></td><td class="c">${rankBadge(teamAst)}<span class="small muted" style="margin-left:4px">${s.ast}点</span></td></tr>
+          <tr><td class="muted small">リーグ内</td><td class="c">${rankBadge(lgGls)}<span class="small muted" style="margin-left:4px">${s.gls}点</span></td><td class="c">${rankBadge(lgAst)}<span class="small muted" style="margin-left:4px">${s.ast}点</span></td></tr>
+        </tbody></table>
+      </div></div>` : '';
       body = `<div class="grid g2">
         <div class="card"><div class="card-h">${seasonLabel(G.season)} シーズン</div><div class="card-b"><dl class="kv">
           <dt>出場</dt><dd>${s.apps}（途中 ${s.sub}）</dd><dt>得点</dt><dd>${s.gls}</dd><dt>アシスト</dt><dd>${s.ast}</dd>
@@ -135,7 +150,7 @@ screen('player', {
           <thead><tr><th>シーズン</th><th>クラブ</th><th class="n">出場</th><th class="n">得点</th><th class="n">ｱｼｽﾄ</th><th class="c">評価</th></tr></thead>
           <tbody>${p.career.slice().reverse().map((r) => `<tr><td>${seasonLabel(r.s)}</td><td>${r.club && G.clubs[r.club] ? clubLink(G.clubs[r.club], { short: false, size: 16 }) : '-'}</td>
             <td class="n">${r.apps + (r.sub || 0)}</td><td class="n">${r.gls}</td><td class="n">${r.ast}</td><td class="c">${rating(r.rat)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">記録なし</td></tr>'}</tbody>
-        </table></div></div></div></div>`;
+        </table></div></div></div></div>${rankCard}`;
     } else if (st.tab === 'con') {
       body = `<div class="card"><div class="card-h">契約</div><div class="card-b">${p.contract ? `<dl class="kv">
         <dt>年俸</dt><dd>${money(p.contract.wage)}</dd><dt>契約期間</dt><dd>${fmtDate(p.contract.until, false)}まで</dd>
