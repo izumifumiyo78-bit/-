@@ -2,6 +2,18 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<script>
+/* Resolve relative asset paths no matter how the host serves this page:
+   with a trailing slash, as index.html, or as a bare directory URL. */
+(function () {
+  var p = location.pathname;
+  if (!/\/$/.test(p) && !/\.x?html?$/i.test(p)) {
+    var b = document.createElement('base');
+    b.href = p + '/';
+    document.head.appendChild(b);
+  }
+})();
+</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>PRO EVOLUTION PITCH 26</title>
 <meta name="description" content="ブラウザで動く本格サッカーゲーム。スマホ完全対応・オフライン起動対応。">
