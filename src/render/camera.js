@@ -92,6 +92,8 @@ const MODES = {
   wide:    { z: 23.0, back: 38.0, vspan: 1.30, hspan: 1.30, bias: -8.0, yFollow: 0.20, xFollow: 0.80, lead: 0.10 },
   goal:    { z: 9.5,  back: 16.0, vspan: 0.74, hspan: 0.74, bias: -5.0, yFollow: 0.58, xFollow: 1.00, lead: 0.00 },
   replay:  { z: 8.0,  back: 15.0, vspan: 1.05, hspan: 1.05, bias: -4.5, yFollow: 0.62, xFollow: 1.00, lead: 0.05 },
+  tactical:{ z: 52.0, back: 22.0, vspan: 1.55, hspan: 1.35, bias: -2.0, yFollow: 0.10, xFollow: 0.55, lead: 0.05 },
+  behind:  { z: 11.0, back: 0,    vspan: 1.00, hspan: 1.00, bias: 0,    yFollow: 0.5,  xFollow: 1.00, lead: 0.0 },
 };
 
 /** Metres of pitch we want on screen, derived from the viewport. */
@@ -119,20 +121,50 @@ export function updateCamera(cam, world, dt, opts = {}) {
   // --- shot selection ---------------------------------------------------
   let want = 'play';
   const nearBox = Math.abs(b.x) > PITCH.halfL - 26;
-  if (world.phase === 'goal') want = 'goal';
+  if (opts.view === 'tactical') want = 'tactical';
+  else if (opts.view === 'behind') want = 'behind';
+  else if (world.phase === 'goal') want = 'goal';
   else if (world.restart && world.restart.kind === 'kickoff') want = 'wide';
   else if (opts.mode) want = opts.mode;
   else if (nearBox) want = 'tight';
-  if (world.phase === 'halftime' || world.phase === 'fulltime') want = 'wide';
+  if ((world.phase === 'halftime' || world.phase === 'fulltime') && !opts.view) want = 'wide';
   if (cam.mode !== want) { cam.mode = want; cam.modeT = 0; }
 
   const m = MODES[cam.mode] || MODES.play;
-  const { wantV, wantH } = framing(cam, m);
+  let { wantV, wantH } = framing(cam, m);
+  if (cam.mode === 'tactical') { wantV = cam.portrait ? 90 : 52; wantH = cam.portrait ? 60 : 92; }
+  if (cam.mode === 'behind') { wantV = cam.portrait ? 60 : 38; wantH = cam.portrait ? 36 : 62; }
   const zoomK = opts.zoom || 1;
 
   let camX, camY, camZ, tgtX, tgtY, tgtZ;
 
-  if (cam.portrait) {
+  if (cam.mode === 'behind') {
+    // Behind the goal the ball is heading for, looking down the pitch.
+    const end = Math.abs(focus.x) > 8 ? Math.sign(focus.x) : (cam.behindEnd || 1);
+    cam.behindEnd = end;
+    cam.side = -end;
+    cam.fx = damp(cam.fx, clamp(focus.x, -PITCH.halfL + 4, PITCH.halfL - 4), 2.4, dt);
+    cam.fy = damp(cam.fy, focus.y * 0.7, 2.6, dt);
+    const back = 22 * (opts.zoom ? 1 / opts.zoom : 1);
+    camX = end * (PITCH.halfL + back);
+    camY = cam.fy * 0.35;
+    camZ = 10 + back * 0.32;
+    tgtX = cam.fx - end * 4;
+    tgtY = cam.fy * 0.9;
+    tgtZ = 0.5;
+  } else if (cam.mode === 'tactical') {
+    cam.side = -1;
+    cam.fx = damp(cam.fx, clamp(focus.x * m.xFollow, -PITCH.halfL + 20, PITCH.halfL - 20), 1.8, dt);
+    cam.fy = damp(cam.fy, focus.y * m.yFollow, 1.8, dt);
+    camX = cam.fx; camY = -(cam.portrait ? 18 : 30); camZ = cam.portrait ? 70 : 62;
+    tgtX = cam.fx; tgtY = cam.fy + 2; tgtZ = 0;
+    if (cam.portrait) {
+      // rotate so the pitch runs up the screen
+      const dir = opts.attackDir || 1;
+      camX = cam.fx - dir * 26; camY = cam.fy; camZ = 66;
+      tgtX = cam.fx + dir * 6; tgtY = cam.fy; tgtZ = 0;
+    }
+  } else if (cam.portrait) {
     // Steep camera behind the user's own goal: the pitch runs up the screen.
     const dir = opts.attackDir || 1;
     cam.side = -dir;

@@ -114,3 +114,44 @@ export function fmtClock(seconds) {
   const m = Math.floor(s / 60);
   return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
+
+// --- weighted choice --------------------------------------------------------
+export function weightedPick(rng, items, weightOf) {
+  let tot = 0;
+  for (const it of items) tot += Math.max(0, weightOf(it));
+  if (tot <= 0) return items[Math.floor(rng() * items.length)];
+  let r = rng() * tot;
+  for (const it of items) {
+    r -= Math.max(0, weightOf(it));
+    if (r <= 0) return it;
+  }
+  return items[items.length - 1];
+}
+
+export const sum = (arr, f = (x) => x) => arr.reduce((s, x) => s + f(x), 0);
+export const avg = (arr, f = (x) => x) => (arr.length ? sum(arr, f) / arr.length : 0);
+export const round1 = (v) => Math.round(v * 10) / 10;
+
+/** Serialisable RNG: state lives in an object so a save can resume it. */
+export function makeStateRng(holder) {
+  const r = () => {
+    holder.s = (holder.s + 0x6d2b79f5) >>> 0;
+    let t = holder.s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  r.range = (lo, hi) => lo + (hi - lo) * r();
+  r.int = (lo, hi) => Math.floor(lo + (hi - lo + 1) * r());
+  r.pick = (arr) => arr[Math.floor(r() * arr.length) % arr.length];
+  r.chance = (p) => r() < p;
+  r.gauss = () => (r() + r() + r() + r() + r() + r() - 3) * 0.7071;
+  r.shuffle = (arr) => {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(r() * (i + 1));
+      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  };
+  return r;
+}
