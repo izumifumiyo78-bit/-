@@ -412,11 +412,6 @@ export function contractsDaily(G) {
     for (const c of Object.values(G.clubs)) {
       for (const p of squad(G, c.id)) {
         if (!p.contract || p.loan || p.contract.until > G.day) continue;
-        if (G.settings.noExpiry && c.id === G.userClub) {
-          // auto-extend by one year
-          p.contract.until = dayOf(G.season + 1, 6, 30);
-          continue;
-        }
         c.squad = c.squad.filter((x) => x !== p.id);
         if (c.sel) { c.sel.xi = c.sel.xi.map((x) => (x === p.id ? null : x)); c.sel.bench = c.sel.bench.filter((x) => x !== p.id); }
         p.club = null; p.contract = null;

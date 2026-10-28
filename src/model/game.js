@@ -257,7 +257,7 @@ export function newWorld(opts = {}) {
       difficulty: opts.difficulty || 'normal',
       matchMode: 'highlights', speed: 2, quality: 'auto', sound: true, autosave: true, mask: true,
       injuries: true, assistantSubs: false, camera: 'broadcast',
-      noSack: true, noExpiry: true,
+      noSack: true,
     },
     manager: {
       name: opts.managerName || '監督', nat: opts.managerNat || 'JPN', rep: opts.managerRep || 30,
