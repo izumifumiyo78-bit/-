@@ -31,12 +31,26 @@ let fpsShow = new URLSearchParams(location.search).has('fps');
 let fps = { t: 0, n: 0, v: 0 };
 let liveSnap = null;
 
+// --- adaptive resolution -------------------------------------------------
+// Canvas2D cost is dominated by how many pixels we fill, so the most
+// effective way to hold 60 fps on an unknown device is to render fewer of
+// them. Frame time is measured and the backing scale follows it.
+const perf = { avg: 16.7, scale: 1, cool: 0, frames: 0, floor: 0.45 };
+
 // ---------------------------------------------------------------------------
+function baseDpr() {
+  const q = cfg ? cfg.quality : 1;
+  const native = window.devicePixelRatio || 1;
+  const small = Math.min(window.innerWidth, window.innerHeight) < 540;
+  // Phones ship dpr 3 but cannot fill that many canvas pixels at 60 fps.
+  const cap = q >= 1 ? (small ? 1.75 : 2) : q >= 0.6 ? 1.4 : 1;
+  return Math.min(native, cap);
+}
+
 function resize() {
   const w = Math.max(320, window.innerWidth);
   const h = Math.max(240, window.innerHeight);
-  const q = cfg ? cfg.quality : 1;
-  dpr = Math.min(window.devicePixelRatio || 1, q >= 1 ? 2 : q >= 0.6 ? 1.5 : 1);
+  dpr = Math.max(0.6, baseDpr() * perf.scale);
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
   canvas.style.width = w + 'px';
@@ -187,12 +201,19 @@ function handleEvents() {
 }
 
 // ---------------------------------------------------------------------------
+/** Quality drops further once resolution scaling has bottomed out. */
+function effQuality() {
+  const base = cfg ? cfg.quality : 1;
+  const k = perf.scale < 0.6 ? 0.45 : perf.scale < 0.82 ? 0.75 : 1;
+  return base * k;
+}
+
 function render(dt) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const theme = cfg ? cfg.theme : 'night';
-  const quality = cfg ? cfg.quality : 1;
+  const quality = effQuality();
   renderScene(ctx, cam, world, assets, {
-    theme, quality,
+    theme, quality, prof: window.__prof || null,
     overlay: (c2, cm) => {
       drawFx(c2, cm, fx);
       drawNetRipple(c2, cm, fx, PITCH);
@@ -208,15 +229,24 @@ function render(dt) {
   if (fpsShow) {
     const tag = document.getElementById('fpsTag');
     tag.classList.remove('hidden');
-    tag.textContent = `${fps.v.toFixed(0)} fps  ${cam.w}x${cam.h}@${dpr.toFixed(1)}  ${world ? world.phase : ''}`;
+    tag.textContent = `${fps.v.toFixed(0)} fps  ${cam.w}x${cam.h}@${dpr.toFixed(2)}`
+      + ` s${perf.scale.toFixed(2)}  ${world ? world.phase : ''}`;
   }
 }
 
-function renderMenuBackdrop() {
-  // Idle camera sweep behind the menus so the shell never looks static.
+let menuAcc = 0;
+function renderMenuBackdrop(dt) {
+  // The menus sit over a slow camera sweep. Redrawing the whole stadium at
+  // 60 Hz behind a static menu is pure battery burn, so cap it.
+  menuAcc += dt;
+  if (menuAcc < 1 / 24) return;
+  menuAcc = 0;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (!world) { ctx.fillStyle = '#06090f'; ctx.fillRect(0, 0, cam.w, cam.h); return; }
-  renderScene(ctx, cam, world, assets, { theme: cfg ? cfg.theme : 'night', quality: cfg ? cfg.quality : 1 });
+  renderScene(ctx, cam, world, assets, {
+    theme: cfg ? cfg.theme : 'night',
+    quality: Math.min(0.55, cfg ? cfg.quality : 1),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -231,21 +261,29 @@ function frame(ts) {
 
   fps.t += dt; fps.n++;
   if (fps.t > 0.4) { fps.v = fps.n / fps.t; fps.t = 0; fps.n = 0; }
+  if (state === 'play' || state === 'replay') adaptQuality(dt);
 
   if (state === 'play') {
+    const P2 = window.__prof2;
+    let m0 = P2 ? performance.now() : 0;
+    const lap = P2 ? (k) => { const n = performance.now(); P2[k] = (P2[k] || 0) * 0.9 + (n - m0) * 0.1; m0 = n; } : null;
     updateInput(input, world, cam, dt);
-    advance(world, dt);
+    if (P2) lap('input');
+    const steps = advance(world, dt);
+    if (P2) { lap('sim'); P2.steps = (P2.steps || 0) * 0.9 + steps * 0.1; }
     handleEvents();
     recordFrame(replay, world, dt);
     stepFx(fx, dt);
     audio.update(dt, world);
     updateCamera(cam, world, dt, camOpts());
+    if (P2) lap('misc');
     if (world.phase === 'fulltime' && world.phaseT > 1.6) {
       state = 'result';
       showResult(world);
       ui.show('result');
     }
     render(dt);
+    if (P2) lap('render');
   } else if (state === 'replay') {
     const alive = applyReplay(replay, world, dt);
     stepFx(fx, dt);
@@ -257,7 +295,8 @@ function frame(ts) {
     if (!alive || skip) endReplay();
   } else if (state === 'paused' || state === 'result') {
     audio.update(dt * 0.2, world);
-    render(dt);
+    menuAcc += dt;
+    if (menuAcc >= 1 / 20) { menuAcc = 0; render(dt); }
   } else {
     // menu / boot: slow idle camera over a demo pitch
     if (world) {
@@ -266,11 +305,31 @@ function frame(ts) {
       world.ball.y = Math.cos(t * 0.11) * 18;
       updateCamera(cam, world, dt, { ...camOpts(), mode: 'wide' });
     }
-    renderMenuBackdrop();
+    renderMenuBackdrop(dt);
   }
 }
 
 // ---------------------------------------------------------------------------
+function adaptQuality(dt) {
+  perf.avg = perf.avg * 0.92 + Math.min(dt * 1000, 90) * 0.08;
+  perf.frames++;
+  if (perf.cool > 0) { perf.cool -= dt; return; }
+  if (perf.frames < 20) return;
+  perf.frames = 0;
+  const target = 1000 / 60;
+  if (perf.avg > target * 1.25 && perf.scale > perf.floor) {
+    // Step harder the further we are from budget so a weak device settles fast.
+    const over = perf.avg / target;
+    perf.scale = Math.max(perf.floor, perf.scale - (over > 2 ? 0.22 : over > 1.5 ? 0.14 : 0.08));
+    perf.cool = 0.7;
+    resize();
+  } else if (perf.avg < target * 1.03 && perf.scale < 1) {
+    perf.scale = Math.min(1, perf.scale + 0.06);
+    perf.cool = 2.2;
+    resize();
+  }
+}
+
 function pause() {
   if (state !== 'play' && state !== 'replay') return;
   if (state === 'replay') endReplay();
@@ -347,6 +406,7 @@ function setupInstallPrompt() {
 
 // expose for automated testing / tuning
 window.__pitch26 = {
+  get perf() { return perf; },
   get world() { return world; },
   get state() { return state; },
   get cam() { return cam; },

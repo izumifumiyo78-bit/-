@@ -25,20 +25,69 @@ function lineToW(ctx, cam, x, y, z) {
   ctx.lineTo(p.sx, p.sy);
   return p.vis;
 }
-/** Filled quad from four world points. */
-function quad(ctx, cam, x1, y1, x2, y2, x3, y3, x4, y4, z = 0) {
-  const p1 = project(cam, x1, y1, z, a);
-  const p2 = project(cam, x2, y2, z, b);
-  const p3 = project(cam, x3, y3, z, c);
-  const p4 = project(cam, x4, y4, z, d);
-  if (!p1.vis && !p2.vis && !p3.vis && !p4.vis) return false;
+
+// --- near-plane clipped polygons ------------------------------------------
+// Without this, any polygon with a vertex behind the camera (which happens
+// constantly on low replay angles) projects to garbage and smears across the
+// screen. Clip in view space, then project.
+const NEAR = 0.5;
+const VBUF = new Float64Array(96 * 3);
+const VCLIP = new Float64Array(192 * 3);
+
+function toView(cam, x, y, z, out, i) {
+  const dx = x - cam.px, dy = y - cam.py, dz = z - cam.pz;
+  out[i] = dx * cam.rx + dy * cam.ry + dz * cam.rz;
+  out[i + 1] = dx * cam.ux + dy * cam.uy + dz * cam.uz;
+  out[i + 2] = dx * cam.dx + dy * cam.dy + dz * cam.dz;
+}
+
+/** Build a path from a flat [x,y,z,...] polygon. Returns false if culled. */
+function pathPoly(ctx, cam, pts, n) {
+  if (n < 3 || n > 96) return false;
+  for (let i = 0; i < n; i++) toView(cam, pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2], VBUF, i * 3);
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    const ai = i * 3, bi = ((i + 1) % n) * 3;
+    const az = VBUF[ai + 2], bz = VBUF[bi + 2];
+    const ain = az >= NEAR, bin = bz >= NEAR;
+    if (ain) {
+      VCLIP[m] = VBUF[ai]; VCLIP[m + 1] = VBUF[ai + 1]; VCLIP[m + 2] = az; m += 3;
+    }
+    if (ain !== bin) {
+      const t = (NEAR - az) / (bz - az);
+      VCLIP[m] = VBUF[ai] + (VBUF[bi] - VBUF[ai]) * t;
+      VCLIP[m + 1] = VBUF[ai + 1] + (VBUF[bi + 1] - VBUF[ai + 1]) * t;
+      VCLIP[m + 2] = NEAR; m += 3;
+    }
+  }
+  if (m < 9) return false;
   ctx.beginPath();
-  ctx.moveTo(p1.sx, p1.sy);
-  ctx.lineTo(p2.sx, p2.sy);
-  ctx.lineTo(p3.sx, p3.sy);
-  ctx.lineTo(p4.sx, p4.sy);
+  for (let i = 0; i < m; i += 3) {
+    const k = cam.focal / VCLIP[i + 2];
+    const sx = cam.cx + VCLIP[i] * k + cam.shakeX;
+    const sy = cam.cy - VCLIP[i + 1] * k + cam.shakeY;
+    if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+  }
   ctx.closePath();
   return true;
+}
+
+const QUAD = new Float64Array(12);
+/** Filled quad from four world points (all at height z). */
+function quad(ctx, cam, x1, y1, x2, y2, x3, y3, x4, y4, z = 0) {
+  QUAD[0] = x1; QUAD[1] = y1; QUAD[2] = z;
+  QUAD[3] = x2; QUAD[4] = y2; QUAD[5] = z;
+  QUAD[6] = x3; QUAD[7] = y3; QUAD[8] = z;
+  QUAD[9] = x4; QUAD[10] = y4; QUAD[11] = z;
+  return pathPoly(ctx, cam, QUAD, 4);
+}
+/** Filled quad from four explicit 3D points. */
+function quad3(ctx, cam, p1, p2, p3, p4) {
+  QUAD[0] = p1[0]; QUAD[1] = p1[1]; QUAD[2] = p1[2];
+  QUAD[3] = p2[0]; QUAD[4] = p2[1]; QUAD[5] = p2[2];
+  QUAD[6] = p3[0]; QUAD[7] = p3[1]; QUAD[8] = p3[2];
+  QUAD[9] = p4[0]; QUAD[10] = p4[1]; QUAD[11] = p4[2];
+  return pathPoly(ctx, cam, QUAD, 4);
 }
 /** A flat band of width `w` metres along a ground segment. */
 function band(ctx, cam, x1, y1, x2, y2, w) {
@@ -49,21 +98,21 @@ function band(ctx, cam, x1, y1, x2, y2, w) {
     x1 + nx, y1 + ny, x2 + nx, y2 + ny,
     x2 - nx, y2 - ny, x1 - nx, y1 - ny, 0);
 }
+const ARC = new Float64Array(96 * 3);
 /** A flat ring segment of width `w` metres. */
 function arcBand(ctx, cam, cx, cy, r, a0, a1, w, steps = 26) {
-  ctx.beginPath();
   const ro = r + w * 0.5, ri = r - w * 0.5;
-  for (let i = 0; i <= steps; i++) {
-    const t = a0 + (a1 - a0) * (i / steps);
-    const p = project(cam, cx + Math.cos(t) * ro, cy + Math.sin(t) * ro, 0, a);
-    if (i === 0) ctx.moveTo(p.sx, p.sy); else ctx.lineTo(p.sx, p.sy);
+  const n = Math.min(steps, 46);
+  let m = 0;
+  for (let i = 0; i <= n; i++) {
+    const t = a0 + (a1 - a0) * (i / n);
+    ARC[m++] = cx + Math.cos(t) * ro; ARC[m++] = cy + Math.sin(t) * ro; ARC[m++] = 0;
   }
-  for (let i = steps; i >= 0; i--) {
-    const t = a0 + (a1 - a0) * (i / steps);
-    const p = project(cam, cx + Math.cos(t) * ri, cy + Math.sin(t) * ri, 0, a);
-    ctx.lineTo(p.sx, p.sy);
+  for (let i = n; i >= 0; i--) {
+    const t = a0 + (a1 - a0) * (i / n);
+    ARC[m++] = cx + Math.cos(t) * ri; ARC[m++] = cy + Math.sin(t) * ri; ARC[m++] = 0;
   }
-  ctx.closePath();
+  return pathPoly(ctx, cam, ARC, m / 3);
 }
 function groundEllipse(ctx, cam, x, y, rx, ry) {
   const p = project(cam, x, y, 0, a);
@@ -210,14 +259,8 @@ function hoardings(ctx, cam, x1, y1, x2, y2, ox, oy, theme, n) {
     const ax = x1 + (x2 - x1) * t0 + ox * off, ay = y1 + (y2 - y1) * t0 + oy * off;
     const bx = x1 + (x2 - x1) * t1 + ox * off, by = y1 + (y2 - y1) * t1 + oy * off;
     const q1 = project(cam, ax, ay, 0, a);
-    const q2 = project(cam, bx, by, 0, b);
-    const q3 = project(cam, bx, by, hgt, c);
     const q4 = project(cam, ax, ay, hgt, d);
-    if (!q1.vis || !q3.vis) continue;
-    ctx.beginPath();
-    ctx.moveTo(q1.sx, q1.sy); ctx.lineTo(q2.sx, q2.sy);
-    ctx.lineTo(q3.sx, q3.sy); ctx.lineTo(q4.sx, q4.sy);
-    ctx.closePath();
+    if (!quad3(ctx, cam, [ax, ay, 0], [bx, by, 0], [bx, by, hgt], [ax, ay, hgt])) continue;
     const gr = ctx.createLinearGradient(0, q4.sy, 0, q1.sy);
     const alt = i % 3;
     gr.addColorStop(0, alt === 0 ? theme.ad0 : alt === 1 ? theme.ad1 : theme.ad2);
@@ -302,7 +345,7 @@ function drawStadium(ctx, cam, assets, theme) {
 // ---------------------------------------------------------------------------
 // Pitch
 // ---------------------------------------------------------------------------
-function drawTurf(ctx, cam, assets, theme) {
+function drawTurf(ctx, cam, assets, theme, quality) {
   const L = P.halfL + 10, W = P.halfW + 10;
   // The ground plane must reach past the stands or low camera angles show
   // black where the world simply stops.
@@ -310,10 +353,10 @@ function drawTurf(ctx, cam, assets, theme) {
     ctx.fillStyle = theme.outer; ctx.fill();
   }
   // run-off surround, with a slightly darker apron ring outside it
+  const L2 = P.halfL + P.runOffX, W2 = P.halfW + P.runOffY;
   if (quad(ctx, cam, -L, -W, L, -W, L, W, -L, W)) {
     ctx.fillStyle = theme.apron; ctx.fill();
   }
-  const L2 = P.halfL + P.runOffX, W2 = P.halfW + P.runOffY;
   if (quad(ctx, cam, -L2, -W2, L2, -W2, L2, W2, -L2, W2)) {
     ctx.fillStyle = theme.surround; ctx.fill();
   }
@@ -336,7 +379,7 @@ function drawTurf(ctx, cam, assets, theme) {
     g.addColorStop(0.45, 'rgba(0,16,8,0.05)');
     g.addColorStop(1, 'rgba(180,255,210,0.07)');
     ctx.fillStyle = g;
-    if (quad(ctx, cam, -L, -W, L, -W, L, W, -L, W)) ctx.fill();
+    if (quad(ctx, cam, -L2, -W2, L2, -W2, L2, W2, -L2, W2)) ctx.fill();
   }
   // goalmouth wear
   ctx.fillStyle = 'rgba(96,78,48,0.10)';
@@ -346,14 +389,16 @@ function drawTurf(ctx, cam, assets, theme) {
   }
   if (groundEllipse(ctx, cam, 0, 0, 1.6, 1.1)) ctx.fill();
 
-  // grass noise, applied in screen space over the pitch area
-  if (assets.grass) {
+  // Grass noise is a full-screen pattern fill, so it is the first thing to go
+  // when quality drops.
+  if (assets.grass && quality >= 0.95) {
     ctx.save();
     if (quad(ctx, cam, -P.halfL, -P.halfW, P.halfL, -P.halfW, P.halfL, P.halfW, -P.halfL, P.halfW)) {
       ctx.clip();
       ctx.globalAlpha = 0.5;
-      const pat = ctx.createPattern(assets.grass, 'repeat');
-      ctx.fillStyle = pat;
+      if (!assets.grassPat) assets.grassPat = ctx.createPattern(assets.grass, 'repeat');
+      ctx.fillStyle = assets.grassPat;
+      const bb = ctx.canvas;
       ctx.fillRect(0, 0, cam.w, cam.h);
       ctx.globalAlpha = 1;
     }
@@ -434,16 +479,7 @@ function drawGoal(ctx, cam, sx, theme) {
   }
   ctx.stroke();
   // faint net fill so the goal mouth reads as a volume
-  if (quad(ctx, cam, back, -gy, back, gy, back, gy, back, -gy)) { /* no-op */ }
-  const n1 = project(cam, back, -gy, 0, a);
-  const n2 = project(cam, back, gy, 0, b);
-  const n3 = project(cam, back, gy, gh, c);
-  const n4 = project(cam, back, -gy, gh, d);
-  if (n1.vis && n3.vis) {
-    ctx.beginPath();
-    ctx.moveTo(n1.sx, n1.sy); ctx.lineTo(n2.sx, n2.sy);
-    ctx.lineTo(n3.sx, n3.sy); ctx.lineTo(n4.sx, n4.sy);
-    ctx.closePath();
+  if (quad3(ctx, cam, [back, -gy, 0], [back, gy, 0], [back, gy, gh], [back, -gy, gh])) {
     ctx.fillStyle = 'rgba(210,225,240,0.07)';
     ctx.fill();
   }
@@ -454,28 +490,18 @@ function drawGoal(ctx, cam, sx, theme) {
   const post = (y) => {
     const p1 = project(cam, gl, y - barW, 0, a);
     const p2 = project(cam, gl, y + barW, 0, b);
-    const p3 = project(cam, gl, y + barW, gh + barW, c);
-    const p4 = project(cam, gl, y - barW, gh + barW, d);
-    if (!p1.vis || !p3.vis) return;
-    ctx.beginPath();
-    ctx.moveTo(p1.sx, p1.sy); ctx.lineTo(p2.sx, p2.sy);
-    ctx.lineTo(p3.sx, p3.sy); ctx.lineTo(p4.sx, p4.sy);
-    ctx.closePath();
+    if (!quad3(ctx, cam, [gl, y - barW, 0], [gl, y + barW, 0],
+      [gl, y + barW, gh + barW], [gl, y - barW, gh + barW])) return;
     const g = ctx.createLinearGradient(p1.sx, p1.sy, p2.sx, p2.sy);
     g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, '#e9eef5'); g.addColorStop(1, '#b9c3d0');
     ctx.fillStyle = g; ctx.fill();
   };
   post(-gy); post(gy);
-  const c1 = project(cam, gl, -gy - barW, gh, a);
-  const c2 = project(cam, gl, gy + barW, gh, b);
-  const c3 = project(cam, gl, gy + barW, gh + barW * 2, c);
-  const c4 = project(cam, gl, -gy - barW, gh + barW * 2, d);
-  if (c1.vis && c3.vis) {
-    ctx.beginPath();
-    ctx.moveTo(c1.sx, c1.sy); ctx.lineTo(c2.sx, c2.sy);
-    ctx.lineTo(c3.sx, c3.sy); ctx.lineTo(c4.sx, c4.sy);
-    ctx.closePath();
-    const g = ctx.createLinearGradient(0, c4.sy, 0, c1.sy);
+  const cb1 = project(cam, gl, 0, gh, a);
+  const cb2 = project(cam, gl, 0, gh + barW * 2, b);
+  if (quad3(ctx, cam, [gl, -gy - barW, gh], [gl, gy + barW, gh],
+    [gl, gy + barW, gh + barW * 2], [gl, -gy - barW, gh + barW * 2])) {
+    const g = ctx.createLinearGradient(0, cb2.sy, 0, cb1.sy);
     g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#aeb8c6');
     ctx.fillStyle = g; ctx.fill();
   }
@@ -664,24 +690,45 @@ function drawPlayer(ctx, cam, world, p, team, quality) {
     torsoPath(ctx, torsoW + 2.2, torsoH + 2.2);
     ctx.fill();
   }
-  const grd = ctx.createLinearGradient(-torsoW, -torsoH * 0.5, torsoW, torsoH * 0.5);
-  grd.addColorStop(0, shade(kit.shirt, 20));
-  grd.addColorStop(0.5, kit.shirt);
-  grd.addColorStop(1, shade(kit.shirt, -30));
-  ctx.fillStyle = grd;
+  ctx.fillStyle = torsoGrad(ctx, kit.shirt, torsoW, torsoH);
   torsoPath(ctx, torsoW, torsoH);
   ctx.fill();
-  // kit pattern
-  if (team.club.style === 'direct' || team.club.crest === 'shield') {
+  // --- kit pattern, clipped to the shirt ---
+  if (quality > 0.55 && !p.isGK && H > 30) {
+    ctx.save();
+    torsoPath(ctx, torsoW, torsoH);
+    ctx.clip();
     ctx.fillStyle = kit.shirt2;
-    ctx.globalAlpha = 0.85;
-    rr(ctx, -torsoW * 0.1, -torsoH * 0.52, torsoW * 0.2, torsoH * 1.04, 0);
-    ctx.globalAlpha = 1;
-  } else if (team.club.style === 'possession') {
-    ctx.fillStyle = kit.shirt2;
-    ctx.globalAlpha = 0.5;
-    rr(ctx, -torsoW * 0.5, -torsoH * 0.18, torsoW, torsoH * 0.16, 0);
-    ctx.globalAlpha = 1;
+    const hw = torsoW * 0.5, hh = torsoH * 0.5;
+    switch (team.club.pat) {
+      case 'stripes': {
+        const n = 4;
+        for (let i = 0; i < n; i++) {
+          const bw = torsoW / (n * 2 - 0.4);
+          ctx.fillRect(-hw + i * bw * 2 + bw * 0.5, -hh, bw, torsoH);
+        }
+        break;
+      }
+      case 'hoops':
+        for (let i = 0; i < 3; i++) {
+          ctx.fillRect(-hw, -hh + torsoH * (0.12 + i * 0.3), torsoW, torsoH * 0.16);
+        }
+        break;
+      case 'sash':
+        ctx.save();
+        ctx.rotate(-0.62);
+        ctx.fillRect(-torsoW, -torsoH * 0.12, torsoW * 2, torsoH * 0.26);
+        ctx.restore();
+        break;
+      case 'halves':
+        ctx.fillRect(0, -hh, hw, torsoH);
+        break;
+      default: break;
+    }
+    // collar
+    ctx.fillStyle = shade(kit.shirt, -45);
+    ctx.fillRect(-torsoW * 0.17, -hh, torsoW * 0.34, torsoH * 0.09);
+    ctx.restore();
   }
   // shirt number, visible when running away from the camera
   if (quality > 0.5 && toward < 0 && sideness < 0.72 && H > 26) {
@@ -790,6 +837,23 @@ function rr(ctx, x, y, w, h, r) {
   ctx.fill();
 }
 
+const gradCache = new Map();
+/** Body shading gradients are identical frame to frame; cache per kit+size. */
+function torsoGrad(ctx, col, w, h) {
+  const wq = Math.round(w / 3) * 3;
+  const key = col + '|' + wq;
+  let g = gradCache.get(key);
+  if (!g) {
+    g = ctx.createLinearGradient(-wq, 0, wq, 0);
+    g.addColorStop(0, shade(col, 20));
+    g.addColorStop(0.5, col);
+    g.addColorStop(1, shade(col, -30));
+    if (gradCache.size > 160) gradCache.clear();
+    gradCache.set(key, g);
+  }
+  return g;
+}
+
 const shadeCache = new Map();
 function shade(hex, amt) {
   const key = hex + '|' + amt;
@@ -819,6 +883,27 @@ function drawBall(ctx, cam, world, quality) {
   const p = project(cam, bl.x, bl.y, bl.z, a);
   if (!p.vis) return;
   const r = Math.max(3.6, BALL.r * p.scale * 1.3);
+
+  // flight trail for struck balls
+  if (quality > 0.4 && bl.trail.length >= 9 &&
+      (bl.kickKind === 'shot' || bl.kickKind === 'cross' || bl.kickKind === 'clear')) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    const n = bl.trail.length / 3;
+    for (let i = 1; i < n; i++) {
+      const q0 = project(cam, bl.trail[(i - 1) * 3], bl.trail[(i - 1) * 3 + 1], bl.trail[(i - 1) * 3 + 2], b);
+      const x0 = q0.sx, y0 = q0.sy, v0 = q0.vis, s0 = q0.scale;
+      const q1 = project(cam, bl.trail[i * 3], bl.trail[i * 3 + 1], bl.trail[i * 3 + 2], c);
+      if (!v0 || !q1.vis) continue;
+      const t = i / n;
+      ctx.globalAlpha = 0.2 * t * t;
+      ctx.lineWidth = Math.max(0.8, BALL.r * s0 * 1.6 * t);
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(q1.sx, q1.sy); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
 
   // motion streak
   const sp = Math.hypot(bl.vx, bl.vy, bl.vz);
@@ -903,22 +988,31 @@ export function createAssets() {
   };
 }
 
+let vignette = null;
 export function renderScene(ctx, cam, world, assets, opts = {}) {
   const theme = THEMES[opts.theme || 'night'] || THEMES.night;
   const quality = opts.quality === undefined ? 1 : opts.quality;
+  const T = opts.prof || null;
+  const mark = T ? (k, t0) => { T[k] = (T[k] || 0) * 0.9 + (performance.now() - t0) * 0.1; } : null;
+  let t0 = T ? performance.now() : 0;
   ctx.save();
   ctx.lineJoin = 'round';
 
   drawSky(ctx, cam, theme);
+  if (T) { mark('sky', t0); t0 = performance.now(); }
   if (quality > 0.25) drawStadium(ctx, cam, assets, theme);
-  drawTurf(ctx, cam, assets, theme);
+  if (T) { mark('stadium', t0); t0 = performance.now(); }
+  drawTurf(ctx, cam, assets, theme, quality);
+  if (T) { mark('turf', t0); t0 = performance.now(); }
   drawLines(ctx, cam, theme);
   cornerFlags(ctx, cam);
+  if (T) { mark('lines', t0); t0 = performance.now(); }
 
   // goals, far one first
   const goals = [1, -1].sort((p, q) =>
     Math.hypot(q * P.halfL - cam.px, 0 - cam.py) - Math.hypot(p * P.halfL - cam.px, 0 - cam.py));
   for (const sx of goals) drawGoal(ctx, cam, sx, theme);
+  if (T) { mark('goals', t0); t0 = performance.now(); }
 
   if (opts.decals) opts.decals(ctx, cam);
 
@@ -938,23 +1032,28 @@ export function renderScene(ctx, cam, world, assets, opts = {}) {
     drawPlayer(ctx, cam, world, e.p, world.teams[e.p.team], quality);
   }
   if (!ballDrawn) drawBall(ctx, cam, world, quality);
+  if (T) { mark('players', t0); t0 = performance.now(); }
 
   if (opts.overlay) opts.overlay(ctx, cam);
 
   // floodlit vignette
   if (quality > 0.3) {
-    const g = ctx.createRadialGradient(cam.w * 0.5, cam.h * 0.48, cam.h * 0.18,
-      cam.w * 0.5, cam.h * 0.5, cam.h * 1.05);
-    g.addColorStop(0, 'rgba(255,255,240,0.05)');
-    g.addColorStop(0.55, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(0,0,0,0.5)');
-    ctx.fillStyle = g;
+    if (!vignette || vignette.w !== cam.w || vignette.h !== cam.h) {
+      const g = ctx.createRadialGradient(cam.w * 0.5, cam.h * 0.48, cam.h * 0.18,
+        cam.w * 0.5, cam.h * 0.5, cam.h * 1.05);
+      g.addColorStop(0, 'rgba(255,255,240,0.05)');
+      g.addColorStop(0.55, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.5)');
+      vignette = { g, w: cam.w, h: cam.h };
+    }
+    ctx.fillStyle = vignette.g;
     ctx.fillRect(0, 0, cam.w, cam.h);
   }
   if (world.goalFlash > 0.01) {
     ctx.fillStyle = `rgba(255,255,255,${world.goalFlash * 0.3})`;
     ctx.fillRect(0, 0, cam.w, cam.h);
   }
+  if (T) mark('post', t0);
   ctx.restore();
 }
 

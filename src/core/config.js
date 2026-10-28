@@ -141,5 +141,5 @@ export const RULES = {
 export const SIM = {
   hz: 60,
   dt: 1 / 60,
-  maxSubSteps: 5,
+  maxSubSteps: 4,
 };
