@@ -31,6 +31,7 @@ export function drawHud(ctx, world, cam, ui) {
   if (ui.showRadar) drawRadar(ctx, world, W, H, s);
   drawMeters(ctx, world, W, H, s, ui);
   drawBanners(ctx, world, W, H, s, ui);
+  drawRestartPrompt(ctx, world, W, H, s);
   if (world.phase === 'goal') drawGoalCard(ctx, world, W, H, s);
   if (ui.replay) drawReplayBadge(ctx, world, W, H, s, ui);
   ctx.restore();
@@ -184,6 +185,33 @@ function drawBanners(ctx, world, W, H, s, ui) {
     i++;
     if (i > 2) break;
   }
+}
+
+const RESTART_HINT = {
+  kickoff: 'パスでキックオフ', throwin: 'パスでスローイン',
+  corner: 'パス / シュートでクロス', goalkick: 'パスでゴールキック',
+  freekick: 'シュートで直接狙う・パスでつなぐ', penalty: 'シュートを長押しして離す',
+};
+function drawRestartPrompt(ctx, world, W, H, s) {
+  const r = world.restart;
+  if (!r || r.state !== 'ready') return;
+  const p = world.user.player;
+  if (!r.taker || r.taker !== p) return;
+  const txt = RESTART_HINT[r.kind];
+  if (!txt) return;
+  const pulse = 0.72 + 0.28 * Math.sin(world.t * 4.5);
+  ctx.textAlign = 'center';
+  ctx.font = F(700, 12 * s);
+  const w = ctx.measureText(txt).width + 26 * s;
+  const y = H * 0.355;
+  rr(ctx, (W - w) * 0.5, y - 12 * s, w, 24 * s, 12 * s);
+  ctx.fillStyle = `rgba(47,224,138,${0.18 * pulse})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(47,224,138,${0.75 * pulse})`;
+  ctx.lineWidth = 1.3 * s;
+  ctx.stroke();
+  ctx.fillStyle = '#eafff3';
+  ctx.fillText(txt, W * 0.5, y + 1 * s);
 }
 
 function drawGoalCard(ctx, world, W, H, s) {

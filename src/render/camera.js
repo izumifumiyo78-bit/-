@@ -100,8 +100,8 @@ function framing(cam, m) {
   if (portrait) {
     // Tall screen: look along the pitch, show a lane of it.
     return {
-      wantV: clamp(44 + cam.h * 0.028, 52, 86) * m.vspan,
-      wantH: clamp(20 + cam.w * 0.030, 24, 40) * m.hspan,
+      wantV: clamp(38 + cam.h * 0.024, 46, 76) * m.vspan,
+      wantH: clamp(16 + cam.w * 0.028, 20, 34) * m.hspan,
     };
   }
   return {
@@ -138,7 +138,8 @@ export function updateCamera(cam, world, dt, opts = {}) {
     cam.side = -dir;
     cam.fx = damp(cam.fx, clamp(focus.x, -PITCH.halfL + 6, PITCH.halfL - 6), 2.6, dt);
     cam.fy = damp(cam.fy, focus.y * 0.55, 2.8, dt);
-    const back = 26 * m.vspan, height = 34 * m.vspan;
+    // Stay below the roof line or we end up looking down onto the far stand.
+    const back = 33 * m.vspan, height = 19.5 * m.vspan;
     camX = cam.fx - dir * back;
     camY = cam.fy * 0.6;
     camZ = height;
@@ -156,11 +157,11 @@ export function updateCamera(cam, world, dt, opts = {}) {
     camY = cam.side * (PITCH.halfW + m.back);
     camZ = m.z;
     if (cam.mode === 'goal') {
-      const sx = Math.sign(b.x) || 1;
+      // Stay with whoever we are following and drift in slowly.
       const a = Math.min(1, cam.modeT / 2.6);
-      camX = lerp(cam.fx, b.x + sx * 11, 0.45);
-      camY = cam.side * (PITCH.halfW + lerp(m.back, m.back - 6, a));
-      camZ = lerp(m.z + 2.5, m.z, a);
+      camX = clamp(cam.fx, -PITCH.halfL + 6, PITCH.halfL - 6);
+      camY = cam.side * (PITCH.halfW + lerp(m.back + 4, m.back - 4, a));
+      camZ = lerp(m.z + 3, m.z, a);
     }
     tgtX = cam.fx;
     // When the action is already on our side of the pitch we do not need to

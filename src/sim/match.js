@@ -127,11 +127,8 @@ export function beginRestart(world, r) {
     world.firstKickoffTeam = r.team;
   }
   world.possTeam = r.team;
-  // The user takes their own team's restarts.
-  if (world.restart.taker && world.restart.taker.team === world.userTeam
-      && world.restart.kind !== 'goalkick') {
-    setUserPlayer(world, world.restart.taker);
-  } else if (world.restart.taker && world.restart.taker.team === world.userTeam) {
+  // The user takes their own team's restarts, keepers included.
+  if (world.restart.taker && world.restart.taker.team === world.userTeam) {
     setUserPlayer(world, world.restart.taker);
   }
   world.emit('restart', { kind: r.kind, team: r.team });

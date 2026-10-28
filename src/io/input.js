@@ -58,7 +58,11 @@ export function createInput(canvas) {
 }
 
 function hasBall(world) {
-  return !!(world && world.carrier && world.user && world.carrier === world.user.player);
+  if (!world || !world.user) return false;
+  if (world.carrier && world.carrier === world.user.player) return true;
+  // Taking a restart counts as having the ball, so the buttons read right.
+  const r = world.restart;
+  return !!(r && r.taker === world.user.player);
 }
 
 export function layout(input, w, h, safe) {

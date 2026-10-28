@@ -119,7 +119,12 @@ function goFullscreen() {
 
 function camOpts() {
   const attackDir = world ? world.teams[world.userTeam].side : 1;
-  return { attackDir, quality: cfg ? cfg.quality : 1 };
+  const o = { attackDir, quality: cfg ? cfg.quality : 1 };
+  // Celebrations are about the scorer, not about the ball sitting in the net.
+  if (world && world.phase === 'goal' && world.lastGoal && world.lastGoal.scorer) {
+    o.focus = world.lastGoal.scorer;
+  }
+  return o;
 }
 
 // ---------------------------------------------------------------------------

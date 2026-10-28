@@ -68,6 +68,24 @@ const resultVisible = await page.isVisible('#s-result');
 await page.screenshot({ path: `${OUT}/e2e-result.png` });
 console.log('result screen visible:', resultVisible);
 
+// ── audio ───────────────────────────────────────────────────────────────
+const audio = await page.evaluate(async () => {
+  // The UI buttons already count as a gesture, so the context should be live.
+  const mod = await import('./src/io/audio.js');
+  const a = mod.createAudio();
+  a.init(); a.resume();
+  const before = a.ctx ? a.ctx.state : 'none';
+  const names = ['kick', 'pass', 'shot', 'header', 'bounce', 'post', 'net',
+    'tackle', 'whistle', 'goal', 'save', 'ui'];
+  const failed = [];
+  for (const n of names) { try { a.play(n, { power: 0.8, bounce: 0.5, kind: 'foul' }); } catch (e) { failed.push(n + ':' + e.message); } }
+  a.update(0.016, window.__pitch26.world);
+  await new Promise((r) => setTimeout(r, 300));
+  return { ready: a.ready, state: a.ctx ? a.ctx.state : 'none', before,
+    crowd: !!a.crowdGain, gain: a.crowdGain ? +a.crowdGain.gain.value.toFixed(4) : 0, failed };
+});
+console.log('audio:', JSON.stringify(audio));
+
 // ── offline launch ──────────────────────────────────────────────────────
 await page.waitForTimeout(1200);
 const swReady = await page.evaluate(() => navigator.serviceWorker.ready.then(() => true).catch(() => false));

@@ -231,8 +231,8 @@ function standRoof(ctx, cam, x1, y1, x2, y2, ox, oy, theme) {
   const g = STAND.gap, dp = STAND.depth, hh = STAND.h, rf = STAND.roof;
   const o1 = project(cam, x1 + ox * (g + dp), y1 + oy * (g + dp), hh, a);
   const o2 = project(cam, x2 + ox * (g + dp), y2 + oy * (g + dp), hh, b);
-  const o3 = project(cam, x2 + ox * (g + dp * 0.25), y2 + oy * (g + dp * 0.25), hh + rf, c);
-  const o4 = project(cam, x1 + ox * (g + dp * 0.25), y1 + oy * (g + dp * 0.25), hh + rf, d);
+  const o3 = project(cam, x2 + ox * (g + dp * 0.62), y2 + oy * (g + dp * 0.62), hh + rf, c);
+  const o4 = project(cam, x1 + ox * (g + dp * 0.62), y1 + oy * (g + dp * 0.62), hh + rf, d);
   if (!o1.vis || !o2.vis || !o3.vis || !o4.vis) return;
   ctx.beginPath();
   ctx.moveTo(o1.sx, o1.sy); ctx.lineTo(o2.sx, o2.sy);
@@ -293,13 +293,17 @@ function cornerFlags(ctx, cam) {
   }
 }
 
-function drawStadium(ctx, cam, assets, theme) {
+function drawStadium(ctx, cam, assets, theme, quality) {
   const L = P.halfL + 5.5, W = P.halfW + 5.5;
+  // More slices = less texture stretch; scale it back when quality drops.
+  const k = quality < 0.6 ? 0.55 : quality < 0.85 ? 0.78 : 1;
+  const nSide = Math.max(6, Math.round(24 * k));
+  const nEnd = Math.max(5, Math.round(20 * k));
   const banks = [
-    { a: [-L, W], b: [L, W], o: [0, 1], tex: assets.crowdA, n: 18 },
-    { a: [L, -W], b: [L, W], o: [1, 0], tex: assets.crowdB, n: 12 },
-    { a: [-L, W], b: [-L, -W], o: [-1, 0], tex: assets.crowdB, n: 12 },
-    { a: [L, -W], b: [-L, -W], o: [0, -1], tex: assets.crowdA, n: 18 },
+    { a: [-L, W], b: [L, W], o: [0, 1], tex: assets.crowdA, n: nSide },
+    { a: [L, -W], b: [L, W], o: [1, 0], tex: assets.crowdB, n: nEnd },
+    { a: [-L, W], b: [-L, -W], o: [-1, 0], tex: assets.crowdB, n: nEnd },
+    { a: [L, -W], b: [-L, -W], o: [0, -1], tex: assets.crowdA, n: nSide },
   ];
   banks.sort((p, q) => {
     const pd = Math.hypot((p.a[0] + p.b[0]) / 2 - cam.px, (p.a[1] + p.b[1]) / 2 - cam.py);
@@ -313,11 +317,11 @@ function drawStadium(ctx, cam, assets, theme) {
       const t0 = i / bk.n, t1 = (i + 1) / bk.n;
       // Each slice samples a different quarter of the texture: that tiles
       // the crowd at a believable density instead of smearing one copy.
-      const u0 = (i % 4) * 0.25;
+      const u0 = ((i * 3) % 5) * 0.2;
       standSlice(ctx, cam, bk.tex,
         x1 + (x2 - x1) * t0, y1 + (y2 - y1) * t0,
         x1 + (x2 - x1) * t1, y1 + (y2 - y1) * t1,
-        bk.o[0], bk.o[1], u0, u0 + 0.25, theme);
+        bk.o[0], bk.o[1], u0, u0 + 0.2, theme);
     }
   }
   // floodlight glow in the corners
@@ -335,7 +339,10 @@ function drawStadium(ctx, cam, assets, theme) {
   }
   ctx.globalCompositeOperation = 'source-over';
 
-  // hoardings around the pitch (far side and both ends only)
+}
+
+/** Perimeter boards, drawn after the stands so they sit in front of them. */
+function drawHoardings(ctx, cam, theme) {
   const HL = P.halfL + 2.5, HW = P.halfW + 2.0;
   hoardings(ctx, cam, -HL, HW, HL, HW, 0, 1, theme, 16);
   hoardings(ctx, cam, HL, -HW, HL, HW, 1, 0, theme, 10);
@@ -742,13 +749,14 @@ function drawPlayer(ctx, cam, world, p, team, quality) {
   ctx.restore();
 
   // --- arms ---
+  const celebrating = p.state === 'celebrate';
   for (let i = 0; i < 2; i++) {
     const ph = gait + (i ? 0 : Math.PI);
     const fwd = Math.sin(ph) * swing * 0.8;
     const sx2 = (i ? 1 : -1) * torsoW * 0.5;
-    const handX = sx2 + ex * fwd * H * 0.3;
-    const handY = shoY + H * 0.3 + exy * fwd * H * 0.2
-      + (p.armAnim > 0 ? -H * 0.22 : 0);
+    const handX = celebrating ? sx2 * 2.1 : sx2 + ex * fwd * H * 0.3;
+    const handY = celebrating ? shoY - H * 0.3
+      : shoY + H * 0.3 + exy * fwd * H * 0.2 + (p.armAnim > 0 ? -H * 0.22 : 0);
     ctx.strokeStyle = i === 0 ? shade(kit.shirt, -10) : shade(kit.shirt, 6);
     ctx.lineWidth = lw * 0.8;
     ctx.beginPath();
@@ -957,7 +965,7 @@ export const THEMES = {
   night: {
     sky0: '#04060b', sky1: '#070c14', sky2: '#0c141e',
     turf0: '#27863f', turf1: '#22793a', surround: '#154026',
-    line: 'rgba(255,255,255,0.95)', roof: '#121a26', roofLip: '#070b11', outer: '#0c1f16', apron: '#10291c',
+    line: 'rgba(255,255,255,0.95)', roof: '#1b2534', roofLip: '#0c1220', outer: '#0c1f16', apron: '#10291c',
     ad0: '#16314a', ad1: '#2a4c2f', ad2: '#3a2144',
     flood0: 'rgba(255,252,235,0.6)', flood1: 'rgba(205,226,255,0.16)',
     light: 'rgba(255,253,230,0.07)', edge: 'rgba(0,14,7,0.5)',
@@ -973,7 +981,7 @@ export const THEMES = {
   dusk: {
     sky0: '#141a38', sky1: '#4b3a66', sky2: '#9c6b57',
     turf0: '#2d8a4b', turf1: '#277c42', surround: '#1b4a2d',
-    line: 'rgba(255,250,240,0.94)', roof: '#2b2236', roofLip: '#140f1c', outer: '#10281a', apron: '#163520',
+    line: 'rgba(255,250,240,0.94)', roof: '#3a2f48', roofLip: '#1b1424', outer: '#10281a', apron: '#163520',
     ad0: '#39264a', ad1: '#53392f', ad2: '#2a3b53',
     flood0: 'rgba(255,240,205,0.45)', flood1: 'rgba(255,205,160,0.12)',
     light: 'rgba(255,225,180,0.07)', edge: 'rgba(16,10,30,0.42)',
@@ -982,8 +990,8 @@ export const THEMES = {
 
 export function createAssets() {
   return {
-    crowdA: makeCrowdTexture(11, 512, 150),
-    crowdB: makeCrowdTexture(97, 512, 150),
+    crowdA: makeCrowdTexture(11, 640, 160),
+    crowdB: makeCrowdTexture(97, 640, 160),
     grass: makeGrassTexture(96, 96),
   };
 }
@@ -998,12 +1006,15 @@ export function renderScene(ctx, cam, world, assets, opts = {}) {
   ctx.save();
   ctx.lineJoin = 'round';
 
+  // Painter order matters: the ground plane extends under the stands, so it
+  // has to go down first or it paints over them.
   drawSky(ctx, cam, theme);
   if (T) { mark('sky', t0); t0 = performance.now(); }
-  if (quality > 0.25) drawStadium(ctx, cam, assets, theme);
-  if (T) { mark('stadium', t0); t0 = performance.now(); }
   drawTurf(ctx, cam, assets, theme, quality);
   if (T) { mark('turf', t0); t0 = performance.now(); }
+  if (quality > 0.25) drawStadium(ctx, cam, assets, theme, quality);
+  drawHoardings(ctx, cam, theme);
+  if (T) { mark('stadium', t0); t0 = performance.now(); }
   drawLines(ctx, cam, theme);
   cornerFlags(ctx, cam);
   if (T) { mark('lines', t0); t0 = performance.now(); }

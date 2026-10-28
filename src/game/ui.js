@@ -148,7 +148,7 @@ export function showResult(world) {
   const [A, B] = world.teams;
   const pos = A.stats.possSec + B.stats.possSec || 1;
   document.getElementById('ftScore').innerHTML =
-    `${A.club.name} <b>${A.score}</b> – <b>${B.score}</b> ${B.club.name}`;
+    `${A.club.name} <b>${A.score}</b>–<b>${B.score}</b> ${B.club.name}`;
   const rows = [
     ['ポゼッション', `${Math.round(A.stats.possSec / pos * 100)}%`, `${Math.round(B.stats.possSec / pos * 100)}%`],
     ['シュート', A.stats.shots, B.stats.shots],
