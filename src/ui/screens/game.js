@@ -52,6 +52,8 @@ export function settingsCard() {
     ${app.G ? sw('能力値を隠す（スカウトで判明）', 'mask', s.mask !== false, 'オフにすると全選手の能力値が見えます') : ''}
     ${app.G ? sw('ケガあり', 'injuries', s.injuries !== false) : ''}
     ${app.G ? sw('アシスタントに試合中の交代を任せる', 'assistantSubs', !!s.assistantSubs) : ''}
+    ${app.G ? sw('解任なし（成績不振でも続投できる）', 'noSack', s.noSack !== false) : ''}
+    ${app.G ? sw('契約満了なし（選手の契約を自動延長）', 'noExpiry', s.noExpiry !== false) : ''}
     ${sw('FPS表示', 'fps', !!p.fps)}
   </div></div>`;
 }

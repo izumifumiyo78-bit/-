@@ -38,6 +38,7 @@ on('afterResult', (G, f) => {
 });
 
 function checkSack(G) {
+  if (G.settings && G.settings.noSack) return;
   const c = G.clubs[G.userClub];
   if (!c) return;
   const h = G.manager.history[G.manager.history.length - 1];

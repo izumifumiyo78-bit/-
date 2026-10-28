@@ -167,7 +167,7 @@ export async function doContinue() {
   app.busy = false;
   $('#busy') && $('#busy').classList.add('hidden');
   if (days >= 1) autosave();
-  if (!G.userClub) { go('jobs', {}, { root: true }); renderTop(); return; }
+  if (!G.userClub && !G.settings.noSack) { go('jobs', {}, { root: true }); renderTop(); return; }
   // go to whatever needs attention
   const fresh = G.inbox.filter((m) => m.id > mailBefore);
   if (userFixtureToday(G)) {
