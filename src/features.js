@@ -15,3 +15,8 @@ import './ui/screens/finance.js';
 import './ui/screens/game.js';
 import './ui/screens/matchday.js';
 import './ui/screens/placeholders.js';
+import './model/transfer.js';
+import './model/scouting.js';
+import './model/board.js';
+import './ui/screens/transfers.js';
+import './ui/screens/scoutjobs.js';

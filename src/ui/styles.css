@@ -150,6 +150,7 @@ a { color: var(--acc); }
 .list-i:last-child { border-bottom: 0; }
 .list-i.click { cursor: pointer; }
 .list-i.click:active { background: var(--panel2); }
+.list-i > svg { width: 22px; height: 22px; flex: none; opacity: .75; }
 .empty { padding: 26px 16px; text-align: center; color: var(--mute); font-size: 13.5px; }
 
 /* ---------- buttons ---------- */

@@ -11,6 +11,7 @@ import { userFixtureToday, advanceDay, nextUserFixture } from '../model/season.j
 import { saveSlot, loadPrefs, savePrefs } from '../io/storage.js';
 import { compShort } from '../model/comp.js';
 import { syncCounters, restoreCounters } from '../model/game.js';
+import { syncIds } from '../model/transfer.js';
 
 export const NAV = [
   { k: 'home', n: 'ホーム', i: 'home' },
@@ -149,6 +150,7 @@ export async function doContinue() {
     while (!app.stop) {
       advanceDay(G);
       days++;
+      if (!G.userClub) break;
       renderTop();
       // let the browser paint between days
       await sleep(days < 3 ? 60 : 16);
@@ -165,6 +167,7 @@ export async function doContinue() {
   app.busy = false;
   $('#busy') && $('#busy').classList.add('hidden');
   if (days >= 1) autosave();
+  if (!G.userClub) { go('jobs', {}, { root: true }); renderTop(); return; }
   // go to whatever needs attention
   const fresh = G.inbox.filter((m) => m.id > mailBefore);
   if (userFixtureToday(G)) {
@@ -211,6 +214,7 @@ export function setGame(G, slot) {
   app.G = G;
   app.slot = slot || null;
   restoreCounters(G);
+  syncIds(G);
 }
 export function prefs(patch) { Object.assign(app.prefs, patch); savePrefs(app.prefs); }
 export { go, back, refresh, cur, compShort };
