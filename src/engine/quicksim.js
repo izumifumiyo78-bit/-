@@ -54,6 +54,20 @@ function pickWeighted(rng, list, w) {
  * cfg: { home: side, away: side, neutral, knockout, agg:[h,a], extraTime }
  * side: { club, players|map, tactic, xi, bench, user }
  */
+// Tactical style matchup: [attacker_bonus, defender_bonus]
+// press beats possession; counter beats press; possession beats counter; direct beats possession
+const STYLE_MATCHUP = {
+  press:     { possession: [0.12, -0.08], counter: [-0.1, 0.08], direct: [-0.05, 0.04], press: [0, 0], balanced: [0.04, -0.02] },
+  counter:   { press: [0.1, -0.08], possession: [-0.06, 0.04], direct: [-0.03, 0.02], counter: [0, 0], balanced: [-0.02, 0.01] },
+  possession:{ counter: [0.06, -0.04], press: [-0.12, 0.08], direct: [-0.08, 0.06], possession: [0, 0], balanced: [0.02, -0.01] },
+  direct:    { possession: [0.08, -0.06], press: [0.05, -0.04], counter: [0.03, -0.02], direct: [0, 0], balanced: [0.02, -0.01] },
+  balanced:  { press: [-0.04, 0.02], possession: [-0.02, 0.01], counter: [0.02, -0.01], direct: [-0.02, 0.01], balanced: [0, 0] },
+};
+function styleBonus(atk, def) {
+  const row = STYLE_MATCHUP[atk] || {};
+  return row[def] || [0, 0];
+}
+
 export function quickSim(rng, cfg) {
   const sides = [cfg.home, cfg.away];
   const L = sides.map(lineup);
@@ -62,9 +76,13 @@ export function quickSim(rng, cfg) {
   const home = cfg.neutral ? 0 : 1;
   const diff = S[0].s - S[1].s + home * 2.5;
   const base = 1.22;
+  // tactical style matchup bonuses
+  const sty = sides.map((sd) => sd.club.style || 'balanced');
+  const [b0h, b0a] = styleBonus(sty[0], sty[1]); // home attacking vs away defending
+  const [b1h, b1a] = styleBonus(sty[1], sty[0]); // away attacking vs home defending
   const lam = [
-    base * Math.exp(0.033 * diff + ment[0] * 0.06 + ment[1] * 0.035),
-    base * Math.exp(-0.033 * diff + ment[1] * 0.06 + ment[0] * 0.035),
+    base * Math.exp(0.033 * diff + ment[0] * 0.06 + ment[1] * 0.035 + b0h - b1a),
+    base * Math.exp(-0.033 * diff + ment[1] * 0.06 + ment[0] * 0.035 + b1h - b0a),
   ];
   // --- minutes, subs ---------------------------------------------------------
   const played = L.map((l) => l.xi.map((x) => ({ p: x.p, pos: x.pos, on: 0, off: 90, gls: 0, ast: 0, yc: 0, rc: 0, inj: null })));
