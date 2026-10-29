@@ -190,8 +190,8 @@ export function updateCamera(cam, world, dt, opts = {}) {
   const depth = Math.max(8, Math.hypot(cam.tx - cam.px, cam.ty - cam.py, cam.tz - cam.pz));
   const scale = Math.min(cam.h / (wantV * zoomK), cam.w / (wantH * zoomK));
   const focal = scale * depth;
-  const wantFov = 2 * Math.atan(cam.h / (2 * focal));
-  cam.fov = damp(cam.fov, clamp(wantFov, rad(12), rad(72)), 4.0 * rate, dt);
+  const wantFov = opts.fovDeg ? rad(opts.fovDeg) : 2 * Math.atan(cam.h / (2 * focal));
+  cam.fov = damp(cam.fov, clamp(wantFov, rad(8), rad(86)), 4.0 * rate, dt);
   cam.mpp = scale;
 
   // --- screen shake -----------------------------------------------------

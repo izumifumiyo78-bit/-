@@ -16,15 +16,19 @@ body{
   -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none;
 }
 #app{position:fixed;inset:0;overflow:hidden}
-canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+canvas#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;background:#04070c}
 
 /* ─── screens ───────────────────────────────────────────────── */
 .screen{
   position:absolute;inset:0;z-index:5;
   padding:calc(10px + var(--sat)) calc(10px + var(--sa));
-  background:radial-gradient(120% 90% at 50% 0%,#0d1623 0%,#05080d 70%);
+  /* The stadium renders live behind the menus, so the scrim is a veil, not
+     a wall -- just enough to keep the type legible. */
+  background:radial-gradient(130% 95% at 50% 0%,rgba(8,16,26,.62) 0%,rgba(3,6,11,.90) 72%);
+  backdrop-filter:blur(2px) saturate(1.1);
   overflow:auto;-webkit-overflow-scrolling:touch;
 }
+#s-boot{background:radial-gradient(120% 90% at 50% 0%,#0d1623 0%,#05080d 70%);backdrop-filter:none}
 .screen.overlay{background:rgba(3,6,11,.82);backdrop-filter:blur(9px) saturate(1.2)}
 .screen.center{display:flex;align-items:center;justify-content:center;text-align:center}
 .screen.hidden,.hidden{display:none!important}

@@ -1,38 +1,35 @@
-// FPS under CPU throttling, to approximate mid-range phones.
-import { createRequire } from 'node:module';
-const { chromium } = createRequire(import.meta.url)('playwright');
-const browser = await chromium.launch({ args: ['--no-sandbox'] });
-const cases = (process.env.PERF_CASES ? JSON.parse(process.env.PERF_CASES) : [
-  [1280, 720, 1, 1, 'desktop 720p'],
-  [844, 390, 2, 4, 'phone 4x slower @2dpr'],
-  [844, 390, 3, 6, 'phone 6x slower @3dpr'],
-  [390, 844, 3, 4, 'portrait 4x @3dpr'],
-]);
-for (const [w, h, dsf, throttle, label] of cases) {
-  const ctxp = await browser.newContext({ viewport: { width: w, height: h },
-    deviceScaleFactor: dsf, hasTouch: true, isMobile: w < 1000 });
-  const page = await ctxp.newPage();
-  page.setDefaultTimeout(25000);
-  try {
-    await page.goto('http://127.0.0.1:8099/index.html?fps=1', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#s-title:not(.hidden)', { timeout: 15000 });
-    const cdp = await ctxp.newCDPSession(page);
-    await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
-    await page.$eval('[data-go="setup"]', (el) => el.click());
-    await page.waitForTimeout(400);
-    await page.$eval('#kickoff', (el) => el.click());
-    await page.waitForTimeout(14000);   // let adaptive scaling converge
-    const samples = [];
-    for (let i = 0; i < 6; i++) {
-      await page.waitForTimeout(800);
-      samples.push(await page.evaluate(() => parseFloat(document.getElementById('fpsTag').textContent)));
-    }
-    const sorted = samples.slice().sort((x, y) => x - y);
-    const sc = await page.evaluate(() => window.__pitch26.perf.scale);
-    console.log(`${label.padEnd(24)} median ${sorted[3].toFixed(0)} fps  min ${sorted[0].toFixed(0)}  scale ${sc.toFixed(2)}  [${samples.map((s) => s.toFixed(0)).join(',')}]`);
-  } catch (e) {
-    console.log(`${label.padEnd(24)} FAILED: ${e.message.split('\n')[0]}`);
-  }
-  await ctxp.close();
+// ---------------------------------------------------------------------------
+// tools/perf.mjs : frame rate under CPU throttling, to approximate phones.
+// Reports the fps the adaptive controller settles on and the resolution scale
+// it had to take to get there.
+//   node tools/perf.mjs     (needs `npm run preview` on :4173)
+// ---------------------------------------------------------------------------
+import { launch, BASE } from './launch.mjs';
+
+const browser = await launch();
+const cases = process.env.PERF_CASES ? JSON.parse(process.env.PERF_CASES) : [
+  [1280, 720, 1, 1, 2, 'desktop 720p / ultra'],
+  [900, 420, 2, 4, 1, 'phone 4x slower @2dpr / high'],
+  [844, 390, 3, 6, 0, 'phone 6x slower @3dpr / performance'],
+];
+for (const [w, h, dsf, throttle, tier, label] of cases) {
+  const ctx = await browser.newContext({
+    viewport: { width: w, height: h }, deviceScaleFactor: dsf,
+    hasTouch: w < 1000, isMobile: w < 1000,
+  });
+  const page = await ctx.newPage();
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
+  await page.goto(`${BASE}/?fps&tier=${tier}`, { waitUntil: 'load' });
+  await page.waitForTimeout(2000);
+  await page.evaluate(() => window.__pitch26.start({ halfMinutes: 2 }));
+  await page.waitForTimeout(12000);
+  const out = await page.evaluate(() => ({
+    fps: +window.__pitch26.fpsValue.toFixed(1),
+    scale: +window.__pitch26.perf.scale.toFixed(2),
+    tier: window.__pitch26.gfx.tier,
+  }));
+  console.log(`${label.padEnd(34)} fps ${String(out.fps).padStart(5)}  scale ${out.scale}  tier ${out.tier}`);
+  await ctx.close();
 }
 await browser.close();

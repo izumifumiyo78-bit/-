@@ -1,0 +1,169 @@
+/* ------------------------------------------------------------------------- *
+   HUD + touch controller. Everything here is DOM so the type stays crisp at
+   any resolution scale and costs the GPU nothing.
+ * ------------------------------------------------------------------------- */
+#hud{
+  position:absolute; inset:0; z-index:12; pointer-events:none;
+  font-variant-numeric:tabular-nums;
+  padding:calc(8px + env(safe-area-inset-top,0px)) calc(10px + env(safe-area-inset-right,0px))
+          calc(8px + env(safe-area-inset-bottom,0px)) calc(10px + env(safe-area-inset-left,0px));
+  opacity:0; transition:opacity .35s ease;
+}
+#hud.on{opacity:1}
+
+/* ─── scoreboard ──────────────────────────────────────────── */
+.sbWrap{position:absolute; top:calc(8px + env(safe-area-inset-top,0px)); left:50%;
+  transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:5px}
+.sb{
+  display:flex; align-items:stretch; height:34px; border-radius:7px; overflow:hidden;
+  background:linear-gradient(180deg,rgba(10,16,24,.93),rgba(6,10,16,.93));
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow:0 8px 24px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.07);
+  backdrop-filter:blur(7px) saturate(1.3);
+  font-weight:800; letter-spacing:.02em;
+}
+.sb .tm{display:flex; align-items:center; gap:7px; padding:0 10px; font-size:14.5px}
+.sb .tm.away{flex-direction:row-reverse}
+.sb .kit{width:5px; height:20px; border-radius:2px; box-shadow:0 0 7px rgba(0,0,0,.6)}
+.sb .sc{
+  display:flex; align-items:center; gap:7px; padding:0 11px; font-size:17px; font-weight:900;
+  background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.02));
+  border-left:1px solid rgba(255,255,255,.09); border-right:1px solid rgba(255,255,255,.09);
+}
+.sb .sc em{font-style:normal; opacity:.45; font-size:13px}
+.sb .clk{display:flex; align-items:center; padding:0 10px; font-size:13.5px; color:#cfe0f2}
+.sb .clk .half{font-size:9px; letter-spacing:.18em; color:#8fa3bb; margin-left:6px}
+.sbSub{
+  font-size:10px; letter-spacing:.2em; font-weight:800; color:#89d9ff;
+  background:rgba(6,12,20,.78); border:1px solid rgba(86,217,255,.22);
+  padding:2.5px 10px; border-radius:20px; opacity:0; transition:opacity .25s ease;
+}
+.sbSub.on{opacity:1}
+
+/* ─── corner furniture ────────────────────────────────────── */
+.brandTag{position:absolute; top:calc(10px + env(safe-area-inset-top,0px));
+  left:calc(12px + env(safe-area-inset-left,0px)); font-size:9.5px; letter-spacing:.3em;
+  font-weight:800; color:rgba(220,232,246,.5)}
+.radar{position:absolute; top:calc(26px + env(safe-area-inset-top,0px));
+  right:calc(12px + env(safe-area-inset-right,0px));
+  width:126px; height:84px; border-radius:6px; overflow:hidden;
+  background:rgba(5,9,15,.52); border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 6px 18px rgba(0,0,0,.45)}
+.radar canvas{width:100%; height:100%; display:block}
+
+/* ─── player card ─────────────────────────────────────────── */
+.pcard{
+  position:absolute; bottom:calc(10px + env(safe-area-inset-bottom,0px));
+  left:calc(12px + env(safe-area-inset-left,0px));
+  display:flex; align-items:center; gap:9px; padding:7px 11px 7px 8px;
+  border-radius:9px; background:linear-gradient(180deg,rgba(10,16,24,.88),rgba(6,10,16,.9));
+  border:1px solid rgba(255,255,255,.09); box-shadow:0 8px 22px rgba(0,0,0,.5);
+  backdrop-filter:blur(6px); opacity:0; transform:translateY(6px);
+  transition:opacity .25s ease, transform .25s ease;
+}
+.pcard.on{opacity:1; transform:none}
+.pcard .num{
+  width:30px; height:30px; border-radius:6px; display:grid; place-items:center;
+  font-weight:900; font-size:14px; color:#06101a;
+  background:linear-gradient(180deg,#9df0c4,#2fe08a);
+}
+.pcard .who{display:flex; flex-direction:column; gap:3px; min-width:94px}
+.pcard .nm{font-size:12.5px; font-weight:800; letter-spacing:.01em}
+.pcard .bars{display:flex; flex-direction:column; gap:3px}
+.bar2{width:104px; height:4px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden}
+.bar2 i{display:block; height:100%; width:100%; border-radius:3px;
+  background:linear-gradient(90deg,#2fe08a,#9df0c4); transition:width .18s linear}
+.bar2.sta i{background:linear-gradient(90deg,#ffd84d,#ff8a4d)}
+.bar2.low i{background:linear-gradient(90deg,#ff6a4d,#ffb04d)}
+
+/* ─── toasts / big events ─────────────────────────────────── */
+.toast{
+  position:absolute; left:50%; top:46%; transform:translate(-50%,-50%) scale(.92);
+  text-align:center; opacity:0; transition:opacity .2s ease, transform .35s cubic-bezier(.2,1.5,.3,1);
+}
+.toast.on{opacity:1; transform:translate(-50%,-50%) scale(1)}
+.toast .big{
+  font-size:clamp(34px,9vw,86px); font-weight:900; letter-spacing:-.02em; line-height:1;
+  background:linear-gradient(180deg,#ffffff,#8fd8ff 70%,#2fe08a);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 6px 26px rgba(0,180,255,.45));
+}
+.toast .sub{margin-top:6px; font-size:clamp(11px,2.4vw,15px); font-weight:700;
+  letter-spacing:.22em; color:#d8e6f6; text-shadow:0 2px 10px rgba(0,0,0,.8)}
+.notice{
+  position:absolute; left:50%; bottom:calc(14% + env(safe-area-inset-bottom,0px));
+  transform:translateX(-50%); display:flex; gap:7px; align-items:center;
+  padding:5px 13px; border-radius:20px; font-size:12px; font-weight:800;
+  background:rgba(6,11,18,.86); border:1px solid rgba(255,255,255,.1);
+  color:#e8eef7; opacity:0; transition:opacity .25s ease; white-space:nowrap;
+}
+.notice.on{opacity:1}
+.notice .dot{width:6px; height:6px; border-radius:50%; background:var(--accent)}
+.notice.warn .dot{background:var(--warn)} .notice.bad .dot{background:var(--bad)}
+.replayTag{
+  position:absolute; top:calc(50px + env(safe-area-inset-top,0px)); left:calc(12px + env(safe-area-inset-left,0px));
+  display:flex; align-items:center; gap:6px; font-size:10.5px; font-weight:900; letter-spacing:.24em;
+  color:#ff8a7a; opacity:0; transition:opacity .2s}
+.replayTag.on{opacity:1}
+.replayTag i{width:7px; height:7px; border-radius:50%; background:#ff4d3d;
+  animation:blink 1s steps(2,end) infinite}
+@keyframes blink{50%{opacity:.15}}
+
+/* ─── touch controller ────────────────────────────────────── */
+#pad{position:absolute; inset:0; z-index:14; --cs:1}
+#pad.hidden{display:none}
+#stickZone{position:absolute; left:0; bottom:0; width:52%; height:100%;
+  pointer-events:auto; touch-action:none}
+#stick{position:absolute; left:0; top:0; width:0; height:0; opacity:0;
+  transition:opacity .16s ease; pointer-events:none}
+#stick.on{opacity:1}
+#stickRing{
+  position:absolute; left:calc(-64px * var(--cs)); top:calc(-64px * var(--cs));
+  width:calc(128px * var(--cs)); height:calc(128px * var(--cs)); border-radius:50%;
+  border:1.5px solid rgba(255,255,255,.17);
+  background:radial-gradient(circle at 50% 45%,rgba(120,200,255,.10),rgba(5,10,16,.34) 70%);
+  box-shadow:inset 0 0 26px rgba(90,180,255,.12), 0 10px 30px rgba(0,0,0,.4);
+}
+#stickKnob{
+  position:absolute; left:calc(-26px * var(--cs)); top:calc(-26px * var(--cs));
+  width:calc(52px * var(--cs)); height:calc(52px * var(--cs)); border-radius:50%;
+  background:radial-gradient(circle at 42% 34%,rgba(255,255,255,.92),rgba(150,205,255,.55) 55%,rgba(40,90,140,.5));
+  border:1px solid rgba(255,255,255,.4);
+  box-shadow:0 6px 18px rgba(0,0,0,.5), inset 0 -4px 10px rgba(0,40,80,.35);
+}
+.btnpad{position:absolute; right:calc(14px + env(safe-area-inset-right,0px));
+  bottom:calc(14px + env(safe-area-inset-bottom,0px));
+  width:calc(188px * var(--cs)); height:calc(188px * var(--cs)); pointer-events:none}
+.ab{
+  position:absolute; pointer-events:auto; touch-action:none; border:0; margin:0; padding:0;
+  width:calc(60px * var(--cs)); height:calc(60px * var(--cs)); border-radius:50%;
+  display:grid; place-items:center; font:inherit; color:#06101a; font-weight:900;
+  background:radial-gradient(circle at 38% 30%,rgba(255,255,255,.55),rgba(255,255,255,0) 60%),
+             linear-gradient(180deg,var(--c1),var(--c2));
+  border:1px solid rgba(255,255,255,.32);
+  box-shadow:0 7px 18px rgba(0,0,0,.45), inset 0 -5px 12px rgba(0,0,0,.22);
+  transition:transform .07s ease, filter .07s ease;
+}
+.ab .lbl{font-size:calc(10.5px * var(--cs)); letter-spacing:.02em; text-shadow:0 1px 0 rgba(255,255,255,.25)}
+.ab.on{transform:scale(.9); filter:brightness(1.35)}
+.ab[data-act=shoot]{--c1:#ff9f88; --c2:#e24a2c; right:calc(64px * var(--cs)); bottom:0;
+  width:calc(68px * var(--cs)); height:calc(68px * var(--cs))}
+.ab[data-act=pass]{--c1:#9beaff; --c2:#1f9ccb; right:calc(128px * var(--cs)); bottom:calc(60px * var(--cs))}
+.ab[data-act=through]{--c1:#fff0a0; --c2:#d4a81c; right:calc(64px * var(--cs)); bottom:calc(120px * var(--cs))}
+.ab[data-act=tackle]{--c1:#dcc6ff; --c2:#7a52c0; right:0; bottom:calc(60px * var(--cs))}
+.ab[data-act=sprint]{--c1:#c9ffd6; --c2:#2fa85c; right:calc(188px * var(--cs)); bottom:calc(4px * var(--cs));
+  width:calc(56px * var(--cs)); height:calc(56px * var(--cs))}
+#bPause{
+  position:absolute; top:calc(8px + env(safe-area-inset-top,0px));
+  right:calc(148px + env(safe-area-inset-right,0px));
+  pointer-events:auto; touch-action:none; width:34px; height:34px; border-radius:9px;
+  display:grid; place-items:center; color:#cfdced; font-size:12px; font-weight:900;
+  background:rgba(8,13,20,.72); border:1px solid rgba(255,255,255,.12);
+}
+#bPause.on{filter:brightness(1.4)}
+
+@media (max-width:760px){ .radar{width:104px; height:70px} }
+@media (max-height:420px){
+  .pcard .bars{display:none}
+  .radar{top:calc(24px + env(safe-area-inset-top,0px))}
+}
