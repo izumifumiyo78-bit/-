@@ -39,6 +39,45 @@ for (let i = 0; i < 12; i++) {
 await page.evaluate(() => window.__pitch26.setCmd({ mx: 0, my: 0, sprint: false, pass: false, shoot: false }));
 step('played a spell');
 
+// the real keyboard path: hold a key, check it reaches world.cmd, and (when
+// the ball is actually in play rather than waiting on a restart) that the
+// controlled player moves.
+// A replay or a restart can be running; wait for live open play.
+let phase = '';
+for (let i = 0; i < 60; i++) {
+  const st2 = await page.evaluate(() => [window.__pitch26.state, window.__pitch26.world.phase]);
+  phase = st2[1];
+  if (st2[0] === 'play' && phase === 'play') break;
+  // take the restart with a real key so the test does not sit in a dead ball
+  await page.keyboard.press('KeyJ');
+  await page.waitForTimeout(320);
+}
+const before = await page.evaluate(() => {
+  const u = window.__pitch26.world.user.player;
+  return u ? [u.x, u.y] : null;
+});
+await page.keyboard.down('ArrowRight');
+await page.waitForTimeout(1200);
+const cmd = await page.evaluate(() => {
+  const c = window.__pitch26.world.cmd;
+  return [c.mx, c.my];
+});
+await page.keyboard.up('ArrowRight');
+const after = await page.evaluate(() => {
+  const u = window.__pitch26.world.user.player;
+  return u ? [u.x, u.y] : null;
+});
+if (!before || !after) throw new Error('no user player to drive');
+const cmdMag = Math.hypot(cmd[0], cmd[1]);
+const moved = Math.hypot(after[0] - before[0], after[1] - before[1]);
+step(`keyboard: cmd ${cmdMag.toFixed(2)}, moved ${moved.toFixed(2)} m (phase ${phase})`);
+if (phase === 'play') {
+  if (cmdMag < 0.5) throw new Error('keyboard input never reached world.cmd');
+  if (moved < 0.3) throw new Error('keyboard input did not move the player');
+} else {
+  step('  (not in open play, movement assertion skipped)');
+}
+
 // Fast-forward the simulation itself rather than waiting on wall clock: the
 // renderer may only be managing a few frames a second on a software GL stack.
 await page.evaluate(() => {

@@ -94,12 +94,14 @@ function adaptQuality(dt) {
   perf.avg = perf.avg * 0.92 + Math.min(dt * 1000, 90) * 0.08;
   perf.frames++;
   if (perf.cool > 0) { perf.cool -= dt; return; }
-  if (perf.frames < 24) return;
+  if (perf.frames < 12) return;
   perf.frames = 0;
   if (perf.avg > perf.target * 1.22 && perf.scale > perf.floor) {
+    // Step harder the further we are from budget: a phone that is three times
+    // over should settle in a second, not in fifteen.
     const over = perf.avg / perf.target;
-    perf.scale = Math.max(perf.floor, perf.scale - (over > 2 ? 0.2 : over > 1.5 ? 0.12 : 0.07));
-    perf.cool = 0.8;
+    perf.scale = Math.max(perf.floor, perf.scale - (over > 2 ? 0.26 : over > 1.5 ? 0.16 : 0.09));
+    perf.cool = 0.5;
     resize();
   } else if (perf.avg < perf.target * 1.02 && perf.scale < 1) {
     perf.scale = Math.min(1, perf.scale + 0.05);
@@ -421,6 +423,7 @@ window.__pitch26 = {
   get world() { return world; },
   get state() { return state; },
   get cam() { return cam; },
+  get input() { return input; },
   get gfx() { return gfx; },
   get fpsValue() { return fps.v; },
   start: (o) => startMatch(o || {}),

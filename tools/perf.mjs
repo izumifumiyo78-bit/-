@@ -27,9 +27,13 @@ for (const [w, h, dsf, throttle, tier, label] of cases) {
   const out = await page.evaluate(() => ({
     fps: +window.__pitch26.fpsValue.toFixed(1),
     scale: +window.__pitch26.perf.scale.toFixed(2),
+    avg: +window.__pitch26.perf.avg.toFixed(1),
+    target: +window.__pitch26.perf.target.toFixed(1),
+    state: window.__pitch26.state,
     tier: window.__pitch26.gfx.tier,
   }));
-  console.log(`${label.padEnd(34)} fps ${String(out.fps).padStart(5)}  scale ${out.scale}  tier ${out.tier}`);
+  console.log(`${label.padEnd(34)} fps ${String(out.fps).padStart(5)}  scale ${out.scale}`
+    + `  avg ${out.avg}ms  target ${out.target}ms  tier ${out.tier}  ${out.state}`);
   await ctx.close();
 }
 await browser.close();
