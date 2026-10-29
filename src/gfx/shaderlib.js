@@ -104,6 +104,22 @@ vec3 voronoi(vec2 p){
 }
 `;
 
+// --- the shape of the ground ------------------------------------------------
+// The pitch is crowned for drainage and gently uneven. Every shader that puts
+// something ON the pitch -- the surface itself, the grass blades, and the
+// depth pass that casts its shadows -- must agree on this function, or the
+// shadow map and the surface disagree and the whole pitch bands with acne.
+export const PITCH_HEIGHT = /* glsl */`
+float pitchHeight(vec2 p){
+  float cx = clamp(p.x/52.5, -1.4, 1.4);
+  float cy = clamp(p.y/34.0, -1.4, 1.4);
+  float crown = (1.0 - cy*cy)*0.085 + (1.0 - cx*cx)*0.02;
+  float undul = fbmS(p*0.055, 3)*0.055 + fbmS(p*0.013, 2)*0.075;
+  float off = clamp(smoothstep(34.0, 44.0, abs(p.y)) + smoothstep(52.5, 64.0, abs(p.x)), 0.0, 1.0);
+  return crown + undul - off*0.22;
+}
+`;
+
 // --- shared environment uniforms -------------------------------------------
 // One block, declared in both stages, backed by shared THREE.Uniform objects
 // (see env.js) so a single CPU write updates every material in the scene.
@@ -322,17 +338,23 @@ export const FOG = /* glsl */`
 // Exponential height fog with the sun scattered into it. The night preset
 // leans on this for the damp, heavy air of a floodlit match.
 vec3 applyFog(vec3 col, vec3 P, vec3 V){
-  float dist = length(P - uCamPos);
+  vec3 ray = P - uCamPos;
+  float dist = length(ray);
+  vec3 dir = ray/max(dist, 1e-4);
   float hC = max(uCamPos.z, 0.0), hP = max(P.z, 0.0);
   float k = max(uFogParams.y, 1e-4);
   float dz = hP - hC;
   float integral;
   if (abs(dz) < 1e-3) integral = dist*exp(-k*hC);
   else integral = dist*(exp(-k*hC) - exp(-k*hP))/(k*dz);
-  float f = 1.0 - exp(-uFogParams.x*integral);
-  f = clamp(f, 0.0, 1.0);
-  float c = max(dot(normalize(P-uCamPos), uSunDir), 0.0);
-  vec3 inscatter = uFogColor + uSunColor*miePhase(c, 0.72)*0.55*(1.0-uNight*0.65);
+  float f = clamp(1.0 - exp(-uFogParams.x*integral), 0.0, 1.0);
+  // What the air scatters toward us IS the sky in that direction -- using a
+  // hand-picked constant instead is how a dusk preset ends up painting the
+  // whole pitch sepia. Looking down, the air takes the colour of the horizon.
+  vec3 horizonDir = normalize(vec3(dir.xy, clamp(dir.z, 0.015, 0.45)));
+  float c = max(dot(dir, uSunDir), 0.0);
+  vec3 inscatter = skyRadiance(horizonDir, 0.0)*0.80 + uFogColor
+                 + uSunColor*miePhase(c, 0.76)*0.40*(1.0 - uNight*0.6);
   return mix(col, inscatter, f);
 }
 `;

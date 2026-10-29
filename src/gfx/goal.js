@@ -381,25 +381,38 @@ export function createGoals(env, opts = {}) {
 
   const wind = new THREE.Vector2();
   let acc = 0;
+  let idleTick = 0;
+  for (const n of nets) n.live = 1.5;        // settle on the first seconds
   return {
     group,
     nets,
-    /** Fixed-step the cloth so it behaves identically at any frame rate. */
+    /**
+     * Fixed-step the cloth so it behaves identically at any frame rate, and
+     * only for a net that has something to do -- a still net is most of the
+     * match, and re-normalling 700 vertices for nothing is not free.
+     */
     update(dt, ball, windVec) {
       wind.copy(windVec);
       acc = Math.min(acc + dt, 0.1);
       const h = 1 / 90;
       let steps = 0;
+      const nearSide = ball && Math.abs(ball.x) > PITCH.halfL - 4.5 ? Math.sign(ball.x) : 0;
+      for (const n of nets) {
+        if (nearSide === n.cloth.side) n.live = 2.2;
+        else n.live = Math.max(0, n.live - dt);
+      }
+      idleTick = (idleTick + 1) % 6;
+      const idle = idleTick === 0;             // a slow breath of wind
       while (acc >= h && steps < 4) {
         for (const n of nets) {
-          // only the goal the ball is near needs to know about it
-          const near = ball && Math.abs(ball.x) > PITCH.halfL - 4 && Math.sign(ball.x) === n.cloth.side;
-          n.cloth.step(h, near ? ball : null, wind);
+          if (n.live <= 0 && !idle) continue;
+          n.cloth.step(h, nearSide === n.cloth.side ? ball : null, wind);
         }
         acc -= h; steps++;
       }
       if (steps) {
         for (const n of nets) {
+          if (n.live <= 0 && !idle) continue;
           n.geo.getAttribute('position').needsUpdate = true;
           n.geo.computeVertexNormals();
         }

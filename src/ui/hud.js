@@ -89,8 +89,7 @@ export function createHud(root) {
     for (const p of world.players) {
       if (p.sentOff) continue;
       const t = world.teams[p.team];
-      rc.fillStyle = p.team === 0 ? (t.kit === 1 ? t.club.away1 : t.club.c1)
-        : (t.kit === 1 ? t.club.away1 : t.club.c1);
+      rc.fillStyle = t.kit === 1 ? t.club.away1 : t.club.c1;
       rc.beginPath();
       rc.arc(X(p.x), Y(p.y), p.user ? 2.9 : 1.9, 0, Math.PI * 2);
       rc.fill();

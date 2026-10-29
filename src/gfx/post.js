@@ -113,6 +113,7 @@ export function createPost(renderer, env, opts = {}) {
     uRes: { value: new THREE.Vector2(2, 2) },
     uTexel: { value: new THREE.Vector2(0.5, 0.5) },
     uSunScreen: { value: new THREE.Vector3(0, 0, -1) },  // xy = ndc, z = visibility
+    uShadowDir: { value: new THREE.Vector3(0, 0, 1) },
     uShadowMap: { value: null },
     uShadowMat: { value: new THREE.Matrix4() },
     uFrame: { value: 0 },
@@ -140,6 +141,7 @@ export function createPost(renderer, env, opts = {}) {
     uniform sampler2D uDepth;
     uniform sampler2D uShadowMap;
     uniform mat4 uShadowMat;
+    uniform vec3 uShadowDir;
     uniform vec2 uRes;
     uniform float uFrame;
     uniform float uSteps;
@@ -162,9 +164,12 @@ export function createPost(renderer, env, opts = {}) {
       float march = min(dist, 160.0);
 
       // --- volumetric in-scattering -------------------------------------
-      int steps = int(uSteps);
+      // Under floodlights the sun is a moon and this pass would march 32 steps
+      // to add nothing, so it is skipped and only the contact shadows run.
+      float sunLum = dot(uSunColor, vec3(0.2126, 0.7152, 0.0722));
+      int steps = sunLum < 0.12 ? 0 : int(uSteps);
       float dither = hash12(vUv*uRes + uFrame*1.37);
-      float stepLen = march/float(steps);
+      float stepLen = march/float(max(steps, 1));
       vec3 acc = vec3(0.0);
       float c = dot(dir, uSunDir);
       float phase = miePhase(c, 0.74)*0.9 + rayleighPhase(c)*0.25;
@@ -189,7 +194,9 @@ export function createPost(renderer, env, opts = {}) {
         float reach = 0.42;
         for (int i = 1; i <= 10; i++){
           float f = float(i)/10.0;
-          vec3 sp = P + uSunDir*(f*reach*jitter) + vec3(0.0, 0.0, 0.004);
+          // march toward the light that actually casts the shadow map; at
+          // night that is near-vertical, so the ground cannot shadow itself
+          vec3 sp = P + uShadowDir*(f*reach*jitter) + vec3(0.0, 0.0, 0.006);
           vec4 cp = uVP*vec4(sp, 1.0);
           vec2 suv = cp.xy/cp.w*0.5 + 0.5;
           if (any(lessThan(suv, vec2(0.0))) || any(greaterThan(suv, vec2(1.0)))) break;
@@ -197,7 +204,7 @@ export function createPost(renderer, env, opts = {}) {
           float linS = linearDepth(sd);
           float linP = linearDepth(cp.z/cp.w*0.5 + 0.5);
           float diff = linP - linS;
-          if (diff > 0.012 && diff < 0.55){
+          if (diff > 0.02 && diff < 0.55){
             occ = max(occ, 1.0 - f*0.85);
           }
         }
@@ -208,6 +215,7 @@ export function createPost(renderer, env, opts = {}) {
     uDepth: shared.uDepth, uShadowMap: shared.uShadowMap, uShadowMat: shared.uShadowMat,
     uInvVP: shared.uInvVP, uVP: shared.uVP, uClip: shared.uClip, uRes: shared.uRes,
     uFrame: shared.uFrame, uSteps: { value: tier >= 2 ? 32 : 16 },
+    uShadowDir: shared.uShadowDir,
   }));
 
   // --- SSR -----------------------------------------------------------------
@@ -445,6 +453,14 @@ export function createPost(renderer, env, opts = {}) {
       // --- lens flare ----------------------------------------------------
       if (uSunScreen.z > 0.001){
         vec2 sp = uSunScreen.xy*0.5 + 0.5;
+        // the flare only exists if the sun is actually visible: 5 taps of the
+        // depth buffer around it, so it fades behind the roof and the stands
+        float vis = 0.0;
+        for (int i = 0; i < 5; i++){
+          vec2 o = vec2(float(i-2)*0.012, float((i*3)%5-2)*0.012);
+          vis += step(0.99995, texture2D(uDepth, clamp(sp+o, 0.0, 1.0)).x);
+        }
+        vis /= 5.0;
         vec2 d = uv - sp;
         float aspect = uRes.x/uRes.y;
         d.x *= aspect;
@@ -465,7 +481,7 @@ export function createPost(renderer, env, opts = {}) {
         }
         float ring = exp(-pow((r - 0.34)*11.0, 2.0))*0.10;
         flare += vec3(0.6, 0.75, 1.0)*ring;
-        col += flare*uSunScreen.z*uSunColor*0.09;
+        col += flare*uSunScreen.z*vis*uSunColor*0.09;
       }
 
       // --- exposure, tonemap, grade -------------------------------------
@@ -603,7 +619,8 @@ export function createPost(renderer, env, opts = {}) {
       shared.uTexel.value.set(1 / W, 1 / H);
     },
     /** Called once per frame, before the scene is drawn. */
-    beginFrame(camera, light, sunDir) {
+    beginFrame(camera, light, sunDir, shadowDir) {
+      if (shadowDir) shared.uShadowDir.value.copy(shadowDir);
       prevVP.copy(curVP);
       curVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       shared.uVP.value.copy(curVP);
@@ -673,7 +690,7 @@ export function createPost(renderer, env, opts = {}) {
         prev = upRT[i];
       }
       comp.uniforms.uBloom.value = prev.texture;
-      if (!api.enableAir) comp.uniforms.uAir.value = null;
+      comp.uniforms.uAir.value = api.enableAir ? airRT.texture : null;
       comp.render(renderer, compRT);
       final.uniforms.uTex.value = compRT.texture;
       final.render(renderer, null);

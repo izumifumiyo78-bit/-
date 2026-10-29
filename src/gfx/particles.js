@@ -7,7 +7,7 @@
 // domain that follows the camera.
 // ---------------------------------------------------------------------------
 import * as THREE from 'three';
-import { ENV_UNIFORMS, NOISE, SKY, BRDF, FLOOD, FOG, litFragment, litVertex, litUniforms } from './shaderlib.js';
+import { ENV_UNIFORMS, litFragment, litVertex, litUniforms } from './shaderlib.js';
 
 export const PT = { CLOD: 0, DUST: 1, SPRAY: 2, CONFETTI: 3, SPARK: 4 };
 
@@ -242,8 +242,8 @@ export function createRain(env, opts = {}) {
       varying vec2 vUv;
       void main(){
         vUv = uv;
-        float SPAN = 44.0;
-        float H = 26.0;
+        float SPAN = 62.0;
+        float H = 30.0;
         float fall = 22.0 + aSeed.z*11.0;
         // a column of rain that follows the camera, wrapped in all three axes
         vec3 c = uCamPos;
@@ -259,7 +259,9 @@ export function createRain(env, opts = {}) {
         vec3 right = normalize(cross(vec3(0.0,0.0,1.0), toCam) + 1e-5);
         vec3 wp = p + right*(uv.x-0.5)*0.016 + vec3(0.0,0.0,1.0)*(uv.y-0.5)*len
                 + vec3(uWind*0.06, 0.0)*(uv.y-0.5)*len;
-        vA = uRain*(0.25 + 0.75*aSeed.z);
+        // fade the column out at its edge so the box never shows itself
+        float far = length(p.xy - uCamPos.xy)/SPAN;
+        vA = uRain*(0.25 + 0.75*aSeed.z)*(1.0 - smoothstep(0.45, 1.0, far));
         if (uRain < 0.01){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
         gl_Position = projectionMatrix*viewMatrix*vec4(wp, 1.0);
       }

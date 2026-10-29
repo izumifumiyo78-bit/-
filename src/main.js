@@ -282,11 +282,9 @@ function frame(ts) {
     }
   } else if (world) {
     // attract mode: a slow sweep over an empty stadium behind the menus
+    // The attract mode is a real AI-vs-AI match playing behind the menus.
     menuAcc += dt;
     if (menuAcc >= 1 / 30) {
-      const t = now / 1000;
-      world.ball.x = Math.sin(t * 0.13) * 34;
-      world.ball.y = Math.cos(t * 0.09) * 17;
       advance(world, menuAcc);
       updateCamera(cam, world, menuAcc, { ...camOpts(), mode: 'wide' });
       gfx.render(world, cam, menuAcc, state);
@@ -367,6 +365,13 @@ async function boot() {
     onPause: () => { if (state === 'paused') resume(); else pause(); },
     onReplay: () => { if (state === 'play') beginReplay(); },
   });
+  // Some touch devices report no touch points until the first touch arrives.
+  window.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    if (input.touchMode) return;
+    input.touchMode = true;
+    if (state === 'play' || state === 'replay') controls.setVisible(true);
+  }, { capture: true, passive: true });
   document.getElementById('bPause').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (state === 'paused') resume(); else pause();

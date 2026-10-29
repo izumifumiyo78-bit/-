@@ -200,10 +200,12 @@ export function createFloodlights(env, opts = {}) {
         ${ENV_UNIFORMS}
         varying vec3 vWorld;
         varying vec2 vLocal;
+        varying vec3 vNormalW;
         void main(){
           vec4 wp = modelMatrix*vec4(position, 1.0);
           vWorld = wp.xyz;
           vLocal = vec2(uv.x, length(position.xy));
+          vNormalW = normalize(mat3(modelMatrix)*normal);
           gl_Position = projectionMatrix*viewMatrix*wp;
         }
       `,
@@ -214,17 +216,22 @@ export function createFloodlights(env, opts = {}) {
         uniform float uShaft;
         varying vec3 vWorld;
         varying vec2 vLocal;
+        varying vec3 vNormalW;
         void main(){
           vec3 V = normalize(uCamPos - vWorld);
+          vec3 N = normalize(vNormalW);
+          // The cone stands in for a volume: a view ray through the middle of
+          // the beam travels through the most lit air, a ray at the silhouette
+          // through almost none. Without this the cone shows its hard edge.
+          float thickness = pow(abs(dot(N, V)), 1.5);
           // dust: slowly drifting motes make the shaft breathe
           float dust = 0.55 + 0.45*fbm3(vWorld*0.09 + vec3(uWind*uTime*0.15, uTime*0.03), 3);
           float along = clamp(vLocal.x, 0.0, 1.0);
           float fade = (1.0 - along)*along*4.0;              // thin at both ends
-          float ground = smoothstep(0.0, 6.0, vWorld.z);
-          float a = uShaft*uNight*dust*fade*0.085*ground;
-          // grazing angles see more air
-          a *= mix(0.35, 1.0, 1.0 - abs(dot(V, vec3(0.0,0.0,1.0))));
-          gl_FragColor = vec4(uFloodColor*a*2.4, 1.0);
+          float ground = smoothstep(0.5, 9.0, vWorld.z);
+          float a = uShaft*uNight*dust*fade*thickness*0.085*ground;
+          a *= mix(0.45, 1.0, 1.0 - abs(dot(V, vec3(0.0,0.0,1.0))));
+          gl_FragColor = vec4(uFloodColor*a*1.9, 1.0);
         }
       `,
     });

@@ -118,7 +118,7 @@ export function createBall(env, opts = {}) {
         // decides how much of it a pixel can still resolve, so a distant ball
         // fades toward its average instead of going solid black.
         float px = max(length(vec2(dFdx(gap), dFdy(gap))), 1e-7);
-        const float SEAM = 0.010;
+        const float SEAM = 0.0075;
         float grooveSharp = 1.0 - smoothstep(SEAM*0.45, SEAM*1.35, gap);
         float resolve = 1.0 - smoothstep(SEAM*0.6, SEAM*3.0, px);
         float groove = mix(0.16, grooveSharp, resolve);
@@ -131,23 +131,24 @@ export function createBall(env, opts = {}) {
         // --- leather --------------------------------------------------------
         float grain = fbm3(L*170.0, 3);
         float dimple = fbm3(L*62.0, 2);
-        vec3 panelTint = vec3(0.86, 0.87, 0.885);
+        vec3 panelTint = vec3(0.905, 0.912, 0.920);
         // a few panels are printed dark, like a real match ball
         float printSel = fract(fid*0.6180339887);
         vec3 print = printSel > 0.78 ? vec3(0.030, 0.035, 0.055)
                    : printSel > 0.62 ? vec3(0.055, 0.30, 0.55)
                    : panelTint;
         // swirl graphic inside the printed panels
-        float swirl = smoothstep(0.42, 0.46, abs(sin(seam*14.0 + fid*2.1)));
-        vec3 alb = mix(print, panelTint, swirl*0.55);
-        alb *= 0.94 + 0.10*grain;
-        alb = mix(alb, vec3(0.075, 0.078, 0.085), groove*0.80);
+        // a restrained graphic inside the printed panels
+        float swirl = smoothstep(0.40, 0.52, abs(sin(seam*9.0 + fid*2.1)));
+        vec3 alb = mix(print, panelTint, swirl*0.35);
+        alb *= 0.965 + 0.055*grain;
+        alb = mix(alb, vec3(0.055, 0.057, 0.062), groove*0.92);
         alb = mix(alb, vec3(0.92, 0.92, 0.90), stitchMask*0.65);
         if (pentagon) alb *= 0.97;
 
         // --- dirt, grass and water -----------------------------------------
-        float dirtMask = clamp(uDirt*(0.35 + fbm3(L*7.0, 3)*1.5), 0.0, 1.0);
-        alb = mix(alb, vec3(0.085, 0.062, 0.040), dirtMask*0.62);
+        float dirtMask = clamp(uDirt*(0.25 + fbm3(L*7.0, 3)*1.3), 0.0, 1.0);
+        alb = mix(alb, vec3(0.085, 0.062, 0.040), dirtMask*0.5);
         float grassMask = clamp(uDirt*1.2*smoothstep(0.55, 0.9, fbm3(L*11.0 + 3.0, 3)), 0.0, 1.0);
         alb = mix(alb, vec3(0.055, 0.080, 0.028), grassMask*0.55);
 

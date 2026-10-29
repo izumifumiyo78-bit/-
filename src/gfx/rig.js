@@ -29,7 +29,7 @@ export const J = {
 // Body proportions, in metres, for a 1.82 m footballer.
 export const BODY = {
   hipH: 0.925, spine: 0.465, neck: 0.115, head: 0.135,
-  shoulder: 0.205, hip: 0.105,
+  shoulder: 0.186, hip: 0.105,
   upperArm: 0.295, foreArm: 0.265, hand: 0.085,
   thigh: 0.455, shin: 0.425, foot: 0.235,
 };
@@ -253,14 +253,19 @@ export function poseOf(p, t, out, info) {
       handY = shY - fy * 0.34 + ly * s * 0.26;
       handZ = shZ - 0.42;
     } else {                                   // running swing
+      // A footballer's hands travel in front of the hips with the elbows bent
+      // near a right angle -- never out at the sides, which is what an
+      // unconstrained two-bone solve wants to do.
       const bal = p.hasBall ? 0.7 : 1.0;
-      handX = shX + fx * swing * 0.52 * bal + lx * s * (0.20 + stride * 0.06);
-      handY = shY + fy * swing * 0.52 * bal + ly * s * (0.20 + stride * 0.06);
-      handZ = shZ - 0.47 + Math.abs(swing) * 0.16 + stride * 0.06;
+      // standing still the arms hang; at pace they come up and drive
+      const reach = 0.04 + 0.13 * stride + swing * 0.42 * bal;
+      handX = shX + fx * reach + lx * s * (0.03 + stride * 0.03);
+      handY = shY + fy * reach + ly * s * (0.03 + stride * 0.03);
+      handZ = shZ - 0.50 + stride * 0.10 + Math.abs(swing) * 0.10;
     }
-    // elbows bend backward and outward
+    // elbows fold back and down, never up or out
     solveIK(shX, shY, shZ, handX, handY, handZ, BODY.upperArm, BODY.foreArm,
-      -fx * 0.6 + lx * s * 0.5, -fy * 0.6 + ly * s * 0.5, -0.35, ik);
+      -fx * 0.80 + lx * s * 0.22, -fy * 0.80 + ly * s * 0.22, -0.45, ik);
     set(side === 0 ? J.elbL : J.elbR, ik[0], ik[1], ik[2]);
     set(side === 0 ? J.wriL : J.wriR, handX, handY, handZ);
     const dx = handX - ik[0], dy = handY - ik[1], dz = handZ - ik[2];

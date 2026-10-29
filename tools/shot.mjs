@@ -47,6 +47,7 @@ for (const theme of themes) {
     ['closeup-ball', { near: 'ball', d: 1.5, h: 0.42, fovDeg: 30 }],
     ['closeup-goal', { near: 'goal', d: 13, h: 2.6, fovDeg: 42 }],
     ['closeup-turf', { near: 'ball', d: 2.6, h: 0.5, fovDeg: 52 }],
+    ['closeup-back', { near: 'back', d: 3.4, h: 1.35, fovDeg: 36 }],
     ['wide-stadium', { near: 'wide', d: 95, h: 42, fovDeg: 44 }],
   ];
   for (const [name, cfg2] of shots) {
@@ -65,7 +66,14 @@ for (const theme of themes) {
       } else if (c.near === 'wide') {
         tx = 0; ty = 0; tz = 1;
       }
-      const a = c.near === 'goal' ? 0.5 : 2.3;
+      let a = c.near === 'goal' ? 0.5 : 2.3;
+      if (c.near === 'back') {
+        const p2 = w.players.reduce((best, q) => {
+          const d = Math.hypot(q.x - b.x, q.y - b.y);
+          return d < best.d && !q.isGK ? { p: q, d } : best;
+        }, { p: null, d: 1e9 });
+        if (p2.p) { tx = p2.p.x; ty = p2.p.y; tz = 1.25; a = p2.p.facing + Math.PI; }
+      }
       window.__pitch26.setCam({
         px: tx + Math.cos(a) * c.d, py: ty + Math.sin(a) * c.d, pz: c.h,
         tx, ty, tz, fovDeg: c.fovDeg,
@@ -76,6 +84,20 @@ for (const theme of themes) {
     await page.screenshot({ path: `${outDir}/${theme}-${name}.png`, timeout: 180000 });
   }
   await page.evaluate(() => { window.__pitch26.setCam(null); window.__pitch26.freeze(false); });
+
+  // --- goal cinematic: confetti, crowd wave, slow motion, DOF ------------
+  await page.evaluate(() => {
+    const w = window.__pitch26.world;
+    const scorer = w.players.find((p) => p.team === 0 && !p.isGK);
+    w.teams[0].score += 1;
+    w.lastGoal = { team: 0, scorer, ownGoal: false };
+    w.phase = 'goal';
+    w.phaseT = 0;
+    if (scorer) { scorer.state = 'celebrate'; scorer.stateT = 0; }
+    w.ball.x = 48; w.ball.y = 0.4; w.ball.z = 0.6;
+  });
+  await page.waitForTimeout(4500);
+  await page.screenshot({ path: `${outDir}/${theme}-goal.png`, timeout: 180000 });
 
   const info = await page.evaluate(() => ({
     fps: window.__pitch26.fpsValue,

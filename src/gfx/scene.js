@@ -184,9 +184,7 @@ export function createScene(canvas, opts = {}) {
   const tmpV = new THREE.Vector3();
   const camFwd = new THREE.Vector3();
   const centre = new THREE.Vector3();
-  let lastGoalT = -99;
   let time = 0;
-  let prevBallSpeed = 0;
 
   function applyCameraPose(cam2d) {
     camPos.set(cam2d.px, cam2d.py, cam2d.pz);
@@ -264,13 +262,8 @@ export function createScene(canvas, opts = {}) {
       env.update(dt, time, camera.position);
 
       // --- cinematic director ------------------------------------------
+      // (the confetti itself is fired from the 'goal' event, once)
       const goal = world.phase === 'goal';
-      if (goal && lastGoalT < world.t - 1) {
-        lastGoalT = world.t;
-        fx.celebrate(b.x * 0.7, b.y * 0.5);
-        crowd.startWave();
-      }
-      if (!goal) lastGoalT = Math.min(lastGoalT, world.t);
       const goalAge = goal ? world.phaseT : 99;
       cine.flash = damp(cine.flash, goal && goalAge < 0.5 ? 0.35 : 0, 6, dt);
       cine.slowmo = damp(cine.slowmo, state === 'replay' ? 1 : goal ? 0.5 : 0, 3, dt);
@@ -299,13 +292,21 @@ export function createScene(canvas, opts = {}) {
       }
       pushers.push({ x: b.x, y: b.y, r: 0.3, s: 0.8 });
       if (grass.mesh) {
-        // a point on the ground a little way in front of the lens
+        // Anchor the patch where the lens is pointed at the ground, but never
+        // further than blades can be resolved: on a broadcast shot that puts
+        // them in the foreground, on a replay close-up right under the action.
         camera.getWorldDirection(camFwd);
-        const fl = Math.hypot(camFwd.x, camFwd.y) || 1;
-        grass.update(
-          camera.position.x + camFwd.x / fl * 9.5,
-          camera.position.y + camFwd.y / fl * 9.5, pushers,
-        );
+        let gx, gy;
+        if (camFwd.z < -0.05) {
+          const t = Math.min(-camera.position.z / camFwd.z, 26);
+          gx = camera.position.x + camFwd.x * t;
+          gy = camera.position.y + camFwd.y * t;
+        } else {
+          const fl = Math.hypot(camFwd.x, camFwd.y) || 1;
+          gx = camera.position.x + camFwd.x / fl * 12;
+          gy = camera.position.y + camFwd.y / fl * 12;
+        }
+        grass.update(gx, gy, pushers);
       }
 
       players.update(world, time, turf);
@@ -316,16 +317,13 @@ export function createScene(canvas, opts = {}) {
       // the ball ploughing through wet grass throws up spray
       const sp = Math.hypot(b.vx, b.vy);
       if (b.z < BALL.r * 1.5 && sp > 6) {
-        turf.add(b.x, b.y, 0.10, Math.atan2(b.vy, b.vx), 0.3, 0.02, 0.5, 0.3);
+        turf.add(b.x, b.y, 0.10, Math.atan2(b.vy, b.vx), 0.3, 0.02, 0.18, 0.3);
         if (env.u.uWet.value > 0.3 && Math.random() < 0.5) {
           fx.emit(PT.SPRAY, b.x, b.y, 0.05,
             -b.vx * 0.1 + (Math.random() - 0.5) * 2, -b.vy * 0.1 + (Math.random() - 0.5) * 2,
             1.5 + Math.random() * 2, 0.025, 0.4, 0.6, 0.66, 0.72);
         }
       }
-      // a fresh kick scuffs the turf and sprays clods
-      if (prevBallSpeed < 0.1 && sp > 0.1) { /* first touch of the match */ }
-      prevBallSpeed = sp;
       turf.update(dt);
       fx.flush();
 
@@ -335,7 +333,10 @@ export function createScene(canvas, opts = {}) {
       const sunDir = env.u.uSunDir.value;
 
       // --- planar reflection -------------------------------------------
-      reflectOn = env.u.uWet.value > 0.16 && tier >= 1;
+      // A planar mirror costs a second pass over the whole stadium, so it
+      // only earns its place once the ground is wet enough to actually show
+      // a reflection; below that the analytic sky probe is indistinguishable.
+      reflectOn = env.u.uWet.value > 0.34 && tier >= 1 && quality >= 0.55;
       pitch.setReflection(reflectRT.texture, reflectVP, reflectOn);
       if (reflectOn) {
         reflectCam.fov = camera.fov;
@@ -361,7 +362,7 @@ export function createScene(canvas, opts = {}) {
 
       // --- main pass ---------------------------------------------------
       sky.setCamera(camera);
-      post.beginFrame(camera, sun, sunDir);
+      post.beginFrame(camera, sun, sunDir, env.shadowDir);
       renderer.setRenderTarget(post.sceneRT);
       renderer.clear();
       renderer.render(scene, camera);
@@ -395,10 +396,14 @@ export function createScene(canvas, opts = {}) {
           }
           turf.add(b.x, b.y, 0.14, 0, 0.35, 0.05, 0.6, 0);
           break;
-        case 'goal':
-          fx.celebrate(b.x * 0.7, b.y * 0.5);
+        case 'goal': {
+          const g = world.lastGoal;
+          const sx = g && g.scorer ? g.scorer.x : b.x * 0.7;
+          const sy = g && g.scorer ? g.scorer.y : b.y * 0.5;
+          fx.celebrate(sx, sy);
           crowd.startWave();
           break;
+        }
         default: break;
       }
     },

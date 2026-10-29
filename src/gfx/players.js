@@ -60,7 +60,7 @@ function boneGeo(taper = 0.75, radial = 10, rings = 4, cap0 = 1, cap1 = 1, squas
 function torsoGeo(radial = 16) {
   const profile = [
     [0.00, 0.98, 1.00], [0.14, 0.90, 0.98], [0.32, 0.92, 1.02],
-    [0.52, 1.02, 1.06], [0.72, 1.12, 1.04], [0.88, 1.05, 0.95],
+    [0.52, 1.00, 1.06], [0.72, 1.06, 1.02], [0.88, 0.98, 0.94],
     [1.00, 0.62, 0.80],
   ];
   const pos = [], nrm = [], uvs = [], idx = [];
@@ -684,11 +684,11 @@ export function createPlayers(env, opts = {}) {
         const lo = joints[J.ankL * 3 + 2] < joints[J.ankR * 3 + 2] ? J.ankL : J.ankR;
         if (joints[lo * 3 + 2] < 0.075) {
           turf.add(joints[lo * 3], joints[lo * 3 + 1], 0.17 + p.speed * 0.012,
-            p.facing, 0.55, p.speed > 6 ? 0.22 : 0.07, 0.35, Math.min(0.5, p.speed * 0.05));
+            p.facing, 0.55, p.speed > 6 ? 0.22 : 0.07, 0.12, Math.min(0.5, p.speed * 0.05));
         }
       }
       if (turf && (p.state === 'slide' || p.state === 'dive') && p.speed > 1.5) {
-        turf.add(p.x, p.y, 0.55, p.facing, 0.95, 0.75, 0.9, 1.0);
+        turf.add(p.x, p.y, 0.55, p.facing, 0.95, 0.75, 0.6, 1.0);
       }
     }
     for (const k in parts) parts[k].instanceMatrix.needsUpdate = true;

@@ -84,10 +84,17 @@ export function applyReplay(rp, world, dt) {
     p.kickAnim = 0;
   }
   const k2a = o0 + ps.length * 5, k2b = o1 + ps.length * 5;
-  world.ball.x = li(b[k2a], b[k2b]);
-  world.ball.y = li(b[k2a + 1], b[k2b + 1]);
-  world.ball.z = li(b[k2a + 2], b[k2b + 2]);
-  world.ball.spinVis = b[k2a + 3];
+  const ball = world.ball;
+  ball.x = li(b[k2a], b[k2b]);
+  ball.y = li(b[k2a + 1], b[k2b + 1]);
+  ball.z = li(b[k2a + 2], b[k2b + 2]);
+  ball.spinVis = b[k2a + 3];
+  // The renderer spins the ball, streaks it and squashes it from its
+  // velocity, so recover that from the two frames we are interpolating.
+  ball.vx = (b[k2b] - b[k2a]) * rp.hz;
+  ball.vy = (b[k2b + 1] - b[k2a + 1]) * rp.hz;
+  ball.vz = (b[k2b + 2] - b[k2a + 2]) * rp.hz;
+  ball.rolling = ball.z < 0.18 && Math.abs(ball.vz) < 0.6;
   return true;
 }
 

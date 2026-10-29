@@ -10,7 +10,9 @@
 // ---------------------------------------------------------------------------
 import * as THREE from 'three';
 import { PITCH } from '../core/config.js';
-import { litFragment, litVertex, SHADOW_VERT, litUniforms } from './shaderlib.js';
+import {
+  litFragment, litVertex, SHADOW_VERT, litUniforms, PITCH_HEIGHT,
+} from './shaderlib.js';
 
 const TIERS = [
   { grid: 0, span: 0, segs: 0 },               // tier 0: shader-only turf
@@ -84,7 +86,7 @@ export function createGrass(env, turf, opts = {}) {
     uniforms,
     lights: true,
     side: THREE.DoubleSide,
-    vertexShader: litVertex(/* glsl */`
+    vertexShader: litVertex(PITCH_HEIGHT + /* glsl */`
       attribute vec2 aCell;
       attribute vec4 aRnd;
       attribute float aSide;
@@ -166,12 +168,9 @@ export function createGrass(env, turf, opts = {}) {
         p.xy = bendDir*sin(lean)*t*h*1.35;
         p += tangent*(aSide*width*(1.0 - t*0.8));
 
+        // sit the blade on the real (crowned, uneven) surface
         vec3 wp = vec3(root, 0.0) + p;
-        // the pitch is crowned: lift the blade onto the surface
-        float cy = clamp(root.y/34.0, -1.4, 1.4);
-        float cx = clamp(root.x/52.5, -1.4, 1.4);
-        wp.z += (1.0 - cy*cy)*0.085 + (1.0 - cx*cx)*0.02
-             + fbmS(root*0.055, 3)*0.055 + fbmS(root*0.013, 2)*0.075;
+        wp.z += pitchHeight(root);
 
         // normal: perpendicular to the blade, facing the camera-ish side
         vec3 bladeDir = normalize(vec3(bendDir*sin(lean), cos(lean)) + 1e-5);

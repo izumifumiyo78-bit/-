@@ -18,7 +18,9 @@
 // ---------------------------------------------------------------------------
 import * as THREE from 'three';
 import { PITCH } from '../core/config.js';
-import { litFragment, litVertex, SHADOW_VERT, litUniforms } from './shaderlib.js';
+import {
+  litFragment, litVertex, SHADOW_VERT, litUniforms, PITCH_HEIGHT, NOISE,
+} from './shaderlib.js';
 
 export const GROUND_X = PITCH.length + 2 * PITCH.runOffX + 46;
 export const GROUND_Y = PITCH.width + 2 * PITCH.runOffY + 40;
@@ -42,21 +44,12 @@ export function createPitch(env, turf, opts = {}) {
   const mat = new THREE.ShaderMaterial({
     uniforms,
     lights: true,
-    vertexShader: litVertex() + /* glsl */`
+    vertexShader: litVertex(PITCH_HEIGHT) + /* glsl */`
       varying vec3 vWorld;
       varying vec3 vNormalW;
       void main(){
         vec3 p = position;
-        // pitch crown: 0.25% fall to the touchlines, plus slow undulation
-        float cx = clamp(p.x/52.5, -1.4, 1.4);
-        float cy = clamp(p.y/34.0, -1.4, 1.4);
-        float crown = (1.0 - cy*cy)*0.085 + (1.0 - cx*cx)*0.02;
-        float undul = fbmS(p.xy*0.055, 3)*0.055 + fbmS(p.xy*0.013, 2)*0.075;
-        p.z += crown + undul;
-        // the run-off drops away slightly so the pitch reads as a raised table
-        float out0 = smoothstep(34.0, 44.0, abs(p.y)) + smoothstep(52.5, 64.0, abs(p.x));
-        p.z -= clamp(out0, 0.0, 1.0)*0.22;
-
+        p.z += pitchHeight(p.xy);
         vec4 wp = modelMatrix*vec4(p, 1.0);
         vWorld = wp.xyz;
         vec3 objectNormal = vec3(0.0, 0.0, 1.0);
@@ -237,7 +230,7 @@ export function createPitch(env, turf, opts = {}) {
         float basin = fbm(q*0.22, 4)*0.65 + fbm(q*0.07, 3)*0.35;
         float lowGround = smoothstep(0.52, 0.30, basin);
         float puddle = clamp((uWet - 0.45)*2.0, 0.0, 1.0)*lowGround
-                     + splash*0.45*clamp(uWet*1.4, 0.0, 1.0);
+                     + splash*0.28*clamp(uWet, 0.0, 1.0);
         puddle = clamp(puddle*smoothstep(0.0, 0.25, 1.0 - apron*0.5), 0.0, 1.0);
         float wetGrass = clamp(uWet*1.15 + splash*0.3, 0.0, 1.0);
 
@@ -268,7 +261,7 @@ export function createPitch(env, turf, opts = {}) {
         Surface s;
         s.P = P; s.N = N; s.V = V; s.albedo = alb;
         s.rough = rough; s.metal = 0.0; s.ao = ao;
-        s.spec = mix(0.6, 2.4, wetGrass) + puddle*2.0;
+        s.spec = mix(0.6, 1.25, wetGrass) + puddle*0.45;
 
         float shadow = getShadowMask();
         vec3 col = vec3(0.0);
@@ -297,23 +290,29 @@ export function createPitch(env, turf, opts = {}) {
         col += floodLights(s)*(0.30 + 0.70*shadow);
 
         // --- reflections --------------------------------------------------
-        float reflAmt = max(puddle, wetGrass*0.18);
+        // Energy conserving: at grazing angles water IS a mirror, so the
+        // reflection replaces the diffuse rather than adding to it.
+        float reflAmt = max(puddle, wetGrass*0.25);
         if (reflAmt > 0.01){
           vec3 R = reflect(-V, N);
-          float fres = F_Schlick(0.025, max(dot(N, V), 0.0));
-          vec3 refl = skyProbe(R, rough*2.0);
+          float NoV = max(dot(N, V), 0.0);
+          // roughness-aware Fresnel: only smooth water turns into a mirror at
+          // grazing angles, wet grass just gets a sheen
+          float Fmax = max(1.0 - rough*1.25, 0.02);
+          float F = 0.02 + (Fmax - 0.02)*pow(1.0 - NoV, 5.0);
+          vec3 refl = skyProbe(R, mix(0.40, 0.04, puddle));
           if (uReflectOn > 0.5){
             vec4 rp = uReflectVP*vec4(P, 1.0);
             vec2 ruv = rp.xy/max(rp.w, 1e-4)*0.5 + 0.5;
             // distort by the water normal, then validate
-            ruv += (N.xy - vNormalW.xy)*0.07*clamp(1.0/max(viewDist*0.15, 1.0), 0.0, 1.0);
+            ruv += (N.xy - vNormalW.xy)*0.05*clamp(1.0/max(viewDist*0.15, 1.0), 0.0, 1.0);
             if (all(greaterThan(ruv, vec2(0.002))) && all(lessThan(ruv, vec2(0.998)))){
               vec3 planar = texture2D(uReflect, ruv).rgb;
               float edge = min(min(ruv.x, 1.0-ruv.x), min(ruv.y, 1.0-ruv.y));
               refl = mix(refl, planar, smoothstep(0.0, 0.06, edge)*0.92);
             }
           }
-          col += refl*fres*reflAmt*6.0;
+          col = mix(col, refl, clamp(F*reflAmt, 0.0, 0.90));
         }
 
         // --- dew / wet sparkle -------------------------------------------
@@ -331,7 +330,28 @@ export function createPitch(env, turf, opts = {}) {
     `),
   });
 
+  // The shadow pass must displace the ground exactly the same way, or the
+  // depth it stores belongs to a flat plane the surface no longer sits on.
+  const depthMat = new THREE.ShaderMaterial({
+    vertexShader: /* glsl */`
+      #include <common>
+      ${NOISE}
+      ${PITCH_HEIGHT}
+      void main(){
+        vec3 p = position;
+        p.z += pitchHeight(p.xy);
+        gl_Position = projectionMatrix*modelViewMatrix*vec4(p, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      #include <common>
+      #include <packing>
+      void main(){ gl_FragColor = packDepthToRGBA(gl_FragCoord.z); }
+    `,
+  });
+
   const mesh = new THREE.Mesh(geo, mat);
+  mesh.customDepthMaterial = depthMat;
   mesh.receiveShadow = true;
   mesh.name = 'pitch';
   mesh.matrixAutoUpdate = false;

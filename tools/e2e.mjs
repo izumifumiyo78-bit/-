@@ -39,16 +39,19 @@ for (let i = 0; i < 12; i++) {
 await page.evaluate(() => window.__pitch26.setCmd({ mx: 0, my: 0, sprint: false, pass: false, shoot: false }));
 step('played a spell');
 
-// fast-forward the simulation to full time
+// Fast-forward the simulation itself rather than waiting on wall clock: the
+// renderer may only be managing a few frames a second on a software GL stack.
 await page.evaluate(() => {
   const w = window.__pitch26.world;
-  w.halfTime = 12; w.totalTime = 24;
+  w.halfTime = 20; w.totalTime = 40;
 });
-const deadline = Date.now() + 90000;
-while (Date.now() < deadline) {
-  const s = await page.evaluate(() => window.__pitch26.state);
+for (let i = 0; i < 80; i++) {
+  const s = await page.evaluate(() => {
+    if (window.__pitch26.state === 'play') window.__pitch26.tick(240);
+    return window.__pitch26.state;
+  });
   if (s === 'result') break;
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(250);
 }
 st = await page.evaluate(() => window.__pitch26.state);
 if (st !== 'result') throw new Error('never reached full time (state ' + st + ')');
