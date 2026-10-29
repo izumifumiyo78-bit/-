@@ -118,8 +118,8 @@ export function createBall(env, opts = {}) {
         // decides how much of it a pixel can still resolve, so a distant ball
         // fades toward its average instead of going solid black.
         float px = max(length(vec2(dFdx(gap), dFdy(gap))), 1e-7);
-        const float SEAM = 0.0075;
-        float grooveSharp = 1.0 - smoothstep(SEAM*0.45, SEAM*1.35, gap);
+        const float SEAM = 0.0062;
+        float grooveSharp = 1.0 - smoothstep(SEAM*0.35, SEAM*1.15, gap);
         float resolve = 1.0 - smoothstep(SEAM*0.6, SEAM*3.0, px);
         float groove = mix(0.16, grooveSharp, resolve);
         // stitch dashes: run along the seam, so modulate by the position

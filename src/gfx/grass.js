@@ -76,7 +76,7 @@ export function createGrass(env, turf, opts = {}) {
     uTurfSpan: turf.uniforms.uTurfSpan,
     uOrigin: { value: new THREE.Vector2() },
     uSpan: { value: T.span },
-    uHeight: { value: 0.042 },
+    uHeight: { value: 0.032 },     // stadium grass is cut to ~30 mm
     uPush: { value: Array.from({ length: 12 }, () => new THREE.Vector4()) },
     uPushCount: { value: 0 },
     uFade: { value: 1 },
