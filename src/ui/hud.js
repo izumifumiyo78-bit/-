@@ -55,12 +55,7 @@ export function createHud(root) {
     state.noticeUntil = performance.now() / 1000 + 2.6;
   }
 
-  const PHASE_LABEL = {
-    kickoff: 'キックオフ', halftime: 'ハーフタイム', fulltime: 'フルタイム',
-    goal: 'ゴール！', deadball: '', play: '',
-  };
-
-  function drawRadar(world, userTeam) {
+  function drawRadar(world) {
     const cv = el.radar;
     const w = cv.clientWidth, h = cv.clientHeight;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -100,7 +95,6 @@ export function createHud(root) {
     const b = world.ball;
     rc.fillStyle = '#ffffff';
     rc.beginPath(); rc.arc(X(b.x), Y(b.y), 1.6, 0, Math.PI * 2); rc.fill();
-    void userTeam;
   }
 
   let radarAcc = 0;
@@ -115,7 +109,6 @@ export function createHud(root) {
     if (clk !== state.shownClock) { el.clock.textContent = clk; state.shownClock = clk; }
     el.half.textContent = world.half === 1 ? '1ST' : '2ND';
 
-    const phase = PHASE_LABEL[world.phase];
     const restart = world.restart && world.restart.kind;
     let subText = '';
     if (world.phase === 'halftime') subText = 'ハーフタイム';
@@ -130,7 +123,6 @@ export function createHud(root) {
     }
     el.sub.textContent = subText;
     el.sub.classList.toggle('on', !!subText);
-    void phase;
 
     // --- player card --------------------------------------------------
     const up = world.user && world.user.player;
@@ -180,7 +172,7 @@ export function createHud(root) {
     if (opts.radar !== false && radarAcc > 0.05) {
       radarAcc = 0;
       el.radar.parentElement.style.display = '';
-      drawRadar(world, world.userTeam);
+      drawRadar(world);
     } else if (opts.radar === false) {
       el.radar.parentElement.style.display = 'none';
     }

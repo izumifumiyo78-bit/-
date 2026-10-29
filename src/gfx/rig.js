@@ -258,10 +258,12 @@ export function poseOf(p, t, out, info) {
       // unconstrained two-bone solve wants to do.
       const bal = p.hasBall ? 0.7 : 1.0;
       // standing still the arms hang; at pace they come up and drive
-      const reach = 0.04 + 0.13 * stride + swing * 0.42 * bal;
+      // Standing, the arm is near full extension so it hangs straight down;
+      // at pace it shortens, which is what folds the elbow.
+      const reach = 0.03 + 0.14 * stride + swing * 0.42 * bal;
       handX = shX + fx * reach + lx * s * (0.03 + stride * 0.03);
       handY = shY + fy * reach + ly * s * (0.03 + stride * 0.03);
-      handZ = shZ - 0.50 + stride * 0.10 + Math.abs(swing) * 0.10;
+      handZ = shZ - 0.555 + stride * 0.13 + Math.abs(swing) * 0.09;
     }
     // elbows fold back and down, never up or out
     solveIK(shX, shY, shZ, handX, handY, handZ, BODY.upperArm, BODY.foreArm,

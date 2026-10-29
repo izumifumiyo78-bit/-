@@ -48,10 +48,11 @@ const fps = { t: 0, n: 0, v: 0 };
 const perf = { avg: 16.7, scale: 1, cool: 0, frames: 0, floor: 0.5, target: 1000 / 60 };
 
 function baseDpr() {
+  // Phones ship dpr 3 and cannot fill that many pixels at 60 Hz; the adaptive
+  // scaler takes it from here.
   const native = window.devicePixelRatio || 1;
-  const small = Math.min(window.innerWidth, window.innerHeight) < 560;
   const q = cfg ? cfg.quality : 1;
-  const cap = q >= 1 ? (small ? 2 : 2) : q >= 0.6 ? 1.5 : 1.1;
+  const cap = q >= 1 ? 2 : q >= 0.6 ? 1.5 : 1.1;
   return Math.min(native, cap);
 }
 

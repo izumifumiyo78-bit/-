@@ -179,8 +179,9 @@ export function createPost(renderer, env, opts = {}) {
         vec3 p = uCamPos + dir*t;
         if (p.z < -0.5) break;
         float dens = exp(-max(p.z, 0.0)*uFogParams.y*18.0);
-        // a little turbulence so the shafts are not perfect cones
-        dens *= 0.75 + 0.5*fbm3(p*0.055 + vec3(uWind*uTime*0.08, 0.0), 2);
+        // One octave of turbulence, not three: this runs 24 times per pixel
+        // and the shafts only need to stop looking like clean cones.
+        dens *= 0.78 + 0.44*vnoise3(p*0.055 + vec3(uWind*uTime*0.08, 0.0));
         acc += shadowAt(p)*dens;
       }
       vec3 vol = uSunColor*phase*acc*stepLen*uFogParams.x*0.85;
@@ -214,7 +215,7 @@ export function createPost(renderer, env, opts = {}) {
   `, Object.assign({}, E, {
     uDepth: shared.uDepth, uShadowMap: shared.uShadowMap, uShadowMat: shared.uShadowMat,
     uInvVP: shared.uInvVP, uVP: shared.uVP, uClip: shared.uClip, uRes: shared.uRes,
-    uFrame: shared.uFrame, uSteps: { value: tier >= 2 ? 32 : 16 },
+    uFrame: shared.uFrame, uSteps: { value: tier >= 2 ? 24 : 8 },
     uShadowDir: shared.uShadowDir,
   }));
 
@@ -415,7 +416,7 @@ export function createPost(renderer, env, opts = {}) {
       }
 
       // --- depth of field (ring bokeh) ----------------------------------
-      if (uDof > 0.005 && depth < 0.9999){
+      if (uDof > 0.02 && depth < 0.9999){
         float lin = linearDepth(depth);
         float coc = clamp(abs(lin - uFocus)/max(uFocus, 1.0), 0.0, 1.0);
         coc = pow(coc, 0.9)*uDof;
@@ -423,8 +424,8 @@ export function createPost(renderer, env, opts = {}) {
           vec2 r = coc*0.022*vec2(1.0, uRes.x/uRes.y);
           vec3 acc = col;
           float wsum = 1.0;
-          for (int i = 0; i < 10; i++){
-            float a = (float(i) + dither)*0.6283185;
+          for (int i = 0; i < 8; i++){
+            float a = (float(i) + dither)*0.7853981;
             vec2 o = vec2(cos(a), sin(a))*r*(0.45 + 0.55*fract(float(i)*0.618));
             vec3 s = sampleScene(uv + o);
             float sd = texture2D(uDepth, uv + o).x;

@@ -90,7 +90,9 @@ const MODES = {
   play:    { z: 17.0, back: 26.0, vspan: 1.00, hspan: 1.00, bias: -5.5, yFollow: 0.34, xFollow: 0.92, lead: 0.28 },
   tight:   { z: 13.5, back: 20.0, vspan: 0.88, hspan: 0.88, bias: -4.2, yFollow: 0.48, xFollow: 0.97, lead: 0.20 },
   wide:    { z: 23.0, back: 38.0, vspan: 1.30, hspan: 1.30, bias: -8.0, yFollow: 0.20, xFollow: 0.80, lead: 0.10 },
-  goal:    { z: 9.5,  back: 16.0, vspan: 0.74, hspan: 0.74, bias: -5.0, yFollow: 0.58, xFollow: 1.00, lead: 0.00 },
+  // Low and close, so the celebration has the stands behind it rather than
+  // forty metres of empty grass.
+  goal:    { z: 6.8,  back: 12.5, vspan: 0.88, hspan: 0.88, bias: -2.2, yFollow: 0.62, xFollow: 1.00, lead: 0.00 },
   replay:  { z: 8.0,  back: 15.0, vspan: 1.05, hspan: 1.05, bias: -4.5, yFollow: 0.62, xFollow: 1.00, lead: 0.05 },
 };
 

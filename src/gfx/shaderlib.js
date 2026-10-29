@@ -168,7 +168,10 @@ vec3 cloudLayer(vec3 d, float h, float scale, float cover, float t){
   return vec3(m*fade, thin*fade, pow(sun, 24.0));
 }
 
-vec3 skyRadiance(vec3 d, float withSun){
+// The cheap half of the sky: gradient, scattering lobes, ground, sun disk.
+// Fog, reflections and IBL all call this one -- the cloud decks cost ten
+// octaves of noise and are only worth it for the dome itself.
+vec3 skyBase(vec3 d, float withSun){
   float up = clamp(d.z, -1.0, 1.0);
   float c = clamp(dot(d, uSunDir), -1.0, 1.0);
 
@@ -186,25 +189,29 @@ vec3 skyRadiance(vec3 d, float withSun){
   // ground bounce below the horizon line
   col = mix(col, uSkyGround, smoothstep(0.0, -0.08, up));
 
-  // night: stars + milky way, hidden by day and by cloud
-  if (uNight > 0.01){
-    vec3 sd = d*vec3(1.0,1.0,1.0);
-    vec2 sp = sd.xy/max(abs(sd.z)+0.35, 0.05);
-    float stars = pow(hash12(floor(sp*420.0)), 240.0)*step(0.02, up);
-    float tw = 0.65+0.35*sin(uTime*2.3 + hash12(floor(sp*420.0))*63.0);
-    float band = smoothstep(0.52, 0.0, abs(sd.x*0.42 + sd.z*0.62 - 0.12));
-    col += uNight*(vec3(0.85,0.92,1.0)*stars*tw*2.2
-         + vec3(0.09,0.11,0.17)*band*fbm(sp*7.0, 4)*smoothstep(0.0,0.3,up));
-  }
-
   // sun disk with limb softening + aureole
   if (withSun > 0.5){
     float disk = smoothstep(0.99955, 0.99985, c);
     float aureole = pow(max(c, 0.0), 1800.0);
     col += uSunColor*(disk*62.0 + aureole*9.0)*(1.0-uNight*0.92);
   }
+  return max(col, vec3(0.0));
+}
 
-  // cloud decks
+// Everything the dome adds on top: stars, the milky way, two cloud decks.
+vec3 skyRadiance(vec3 d, float withSun){
+  vec3 col = skyBase(d, withSun);
+  float up = clamp(d.z, -1.0, 1.0);
+
+  if (uNight > 0.01){
+    vec2 sp = d.xy/max(abs(d.z)+0.35, 0.05);
+    float stars = pow(hash12(floor(sp*420.0)), 240.0)*step(0.02, up);
+    float tw = 0.65+0.35*sin(uTime*2.3 + hash12(floor(sp*420.0))*63.0);
+    float band = smoothstep(0.52, 0.0, abs(d.x*0.42 + d.z*0.62 - 0.12));
+    col += uNight*(vec3(0.85,0.92,1.0)*stars*tw*2.2
+         + vec3(0.09,0.11,0.17)*band*fbm(sp*7.0, 4)*smoothstep(0.0,0.3,up));
+  }
+
   vec3 cl = cloudLayer(d, 900.0, 0.00055, 0.52, uTime);
   vec3 cl2 = cloudLayer(d, 2600.0, 0.00022, 0.62, uTime*0.6);
   vec3 cloudLit = uSkyHorizon*0.85 + uSunColor*0.055*(0.35 + cl.z*2.2);
@@ -221,7 +228,7 @@ vec3 skyRadiance(vec3 d){ return skyRadiance(d, 1.0); }
 // and indistinguishable at the sizes things appear on screen here.
 vec3 skyProbe(vec3 r, float rough){
   vec3 avg = (uSkyZenith*0.55 + uSkyHorizon*0.45)*(0.55+0.45*(1.0-uNight));
-  vec3 sharp = skyRadiance(normalize(r), 0.0);
+  vec3 sharp = skyBase(normalize(r), 0.0);
   return mix(sharp, avg, clamp(rough*rough*1.35, 0.0, 1.0));
 }
 
@@ -353,7 +360,7 @@ vec3 applyFog(vec3 col, vec3 P, vec3 V){
   // whole pitch sepia. Looking down, the air takes the colour of the horizon.
   vec3 horizonDir = normalize(vec3(dir.xy, clamp(dir.z, 0.015, 0.45)));
   float c = max(dot(dir, uSunDir), 0.0);
-  vec3 inscatter = skyRadiance(horizonDir, 0.0)*0.80 + uFogColor
+  vec3 inscatter = skyBase(horizonDir, 0.0)*0.80 + uFogColor
                  + uSunColor*miePhase(c, 0.76)*0.40*(1.0 - uNight*0.6);
   return mix(col, inscatter, f);
 }

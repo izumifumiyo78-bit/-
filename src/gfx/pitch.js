@@ -201,6 +201,12 @@ export function createPitch(env, turf, opts = {}) {
         mowGain = mix(1.0, mowGain, (1.0 - flatten*0.7)*(1.0 - apron*0.6)*uMow.y);
         alb *= mowGain;
         alb *= 1.0 - rollerMark*0.10;
+        // Inside each block the mower's roller leaves fine parallel lines
+        // along the direction it drove. They are what sells a cut pitch on
+        // a long lens, and they cost one sine.
+        float across = dot(q, vec2(-lay.y, lay.x));
+        float roller = sin(across*6.2831/1.05);
+        alb *= 1.0 + roller*0.017*midDetail*(1.0 - flatten*0.7)*(1.0 - apron*0.8);
 
         // --- markings ----------------------------------------------------
         float spot = 0.0;

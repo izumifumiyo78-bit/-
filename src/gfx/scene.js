@@ -24,6 +24,7 @@ import { createGoals } from './goal.js';
 import { createPlayers } from './players.js';
 import { createBall } from './ball.js';
 import { createParticles, createRain, createBallTrail, PT } from './particles.js';
+import { createIndicator } from './indicator.js';
 import { createPost } from './post.js';
 
 /** Guess what this device can take. The adaptive controller refines it. */
@@ -135,6 +136,9 @@ export function createScene(canvas, opts = {}) {
   const ball = createBall(env, { tier });
   scene.add(ball.mesh);
 
+  const indicator = createIndicator(env);
+  scene.add(indicator.mesh);
+
   const fx = createParticles(env, { tier });
   scene.add(fx.mesh);
   const rain = createRain(env, { tier });
@@ -245,6 +249,8 @@ export function createScene(canvas, opts = {}) {
     /** Match-level setup: kits, crowd colours, clean turf. */
     setMatch(world) {
       players.setSquads(world);
+      const userTeam = world.teams[world.userTeam];
+      indicator.setColor(userTeam.kit === 1 ? userTeam.club.away1 : userTeam.club.c1);
       const home = world.teams[0].club, away = world.teams[1].club;
       stadium.setTeams(home, away);
       crowd.setTeams(home, away);
@@ -267,9 +273,11 @@ export function createScene(canvas, opts = {}) {
       const goalAge = goal ? world.phaseT : 99;
       cine.flash = damp(cine.flash, goal && goalAge < 0.5 ? 0.35 : 0, 6, dt);
       cine.slowmo = damp(cine.slowmo, state === 'replay' ? 1 : goal ? 0.5 : 0, 3, dt);
-      const dofWant = (state === 'replay' ? 0.55 : goal ? 0.42 : 0.14)
-        * (quality >= 1 ? 1 : 0.35);
-      cine.dof = damp(cine.dof, tier >= 2 ? dofWant : dofWant * 0.4, 2.5, dt);
+      // Depth of field is a cinematic, not a permanent lens: a broadcast
+      // camera holds the whole pitch sharp. It also costs ~16 taps a pixel,
+      // so only the top tier pays for it, and only on replays and goals.
+      const dofWant = state === 'replay' ? 0.55 : goal ? 0.42 : 0.0;
+      cine.dof = damp(cine.dof, tier >= 2 && quality >= 1 ? dofWant : 0, 2.5, dt);
       cine.focus = damp(cine.focus, camera.position.distanceTo(
         tmpV.set(b.x, b.y, b.z)), 4, dt);
       cine.vignette = damp(cine.vignette, goal || state === 'replay' ? 0.46 : 0.3, 2, dt);
@@ -310,6 +318,10 @@ export function createScene(canvas, opts = {}) {
       }
 
       players.update(world, time, turf);
+      indicator.update(
+        world.user && world.user.player, b, dt,
+        state === 'play' && !world.noUser && world.phase !== 'goal',
+      );
       ball.update(b, dt);
       trail.update(b, camera.position);
       goals.update(dt, b, env.u.uWind.value);

@@ -13,8 +13,13 @@ import { litFragment, litVertex, SHADOW_VERT, litUniforms } from './shaderlib.js
 import { poseOf, J } from './rig.js';
 
 // --- geometry --------------------------------------------------------------
-/** Tapered capsule: unit length along +Z, unit radius at z=0. */
-function boneGeo(taper = 0.75, radial = 10, rings = 4, cap0 = 1, cap1 = 1, squash = 1) {
+/**
+ * Tapered capsule: unit length along +Z, unit radius at z=0.
+ * cap0/cap1 are the end caps measured in LENGTHS, not radii -- the instance
+ * matrix scales z by the bone length, so a cap of 1 would add a whole bone's
+ * worth of spike past the joint.
+ */
+function boneGeo(taper = 0.75, radial = 10, rings = 4, cap0 = 0.15, cap1 = 0.15, squash = 1) {
   const pos = [], nrm = [], uvs = [], idx = [];
   const rows = [];
   const capSteps = 3;
@@ -44,8 +49,12 @@ function boneGeo(taper = 0.75, radial = 10, rings = 4, cap0 = 1, cap1 = 1, squas
   const W = radial + 1;
   for (let r = 0; r < rows.length - 1; r++) {
     for (let s = 0; s < radial; s++) {
+      // Counter-clockwise seen from OUTSIDE: with the other winding the
+      // front faces are culled and you are left looking at the inside of the
+      // far surface -- which still lights plausibly, so the only symptom is
+      // that the face and the squad number end up on the wrong side.
       const a = r * W + s, b = a + W;
-      idx.push(a, b, a + 1, b, b + 1, a + 1);
+      idx.push(a, a + 1, b, b, a + 1, b + 1);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -83,8 +92,12 @@ function torsoGeo(radial = 16) {
   const W = radial + 1;
   for (let r = 0; r < profile.length - 1; r++) {
     for (let s = 0; s < radial; s++) {
+      // Counter-clockwise seen from OUTSIDE: with the other winding the
+      // front faces are culled and you are left looking at the inside of the
+      // far surface -- which still lights plausibly, so the only symptom is
+      // that the face and the squad number end up on the wrong side.
       const a = r * W + s, b = a + W;
-      idx.push(a, b, a + 1, b, b + 1, a + 1);
+      idx.push(a, a + 1, b, b, a + 1, b + 1);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -273,7 +286,7 @@ export function createPlayers(env, opts = {}) {
         // --- squad number on the back ------------------------------------
         float num = vB.w;
         if (num > 0.5){
-          vec2 nuv = vec2((u - 0.5)*3.4 + 0.5, (v - 0.46)*2.6);
+          vec2 nuv = vec2((u - 0.5)*3.6 + 0.5, (v - 0.555)*4.0);
           float tens = floor(num/10.0);
           float ones = mod(num, 10.0);
           float glyph = 0.0;
@@ -288,10 +301,20 @@ export function createPlayers(env, opts = {}) {
               glyph = texture2D(uNum, vec2((d + local)/10.0, 1.0-nuv.y)).r;
             }
           }
-          // printed vinyl: slightly glossier than the cloth around it
+          // A striped or hooped kit cannot carry a flat number, so the panel
+          // behind it settles to the primary colour first -- which is what
+          // real kits do -- and the digits get an outline either way.
+          float onBack = step(abs(u - 0.5), 0.42);
+          float panel = (1.0 - smoothstep(0.26, 0.36, abs(nuv.x - 0.5)))
+                      * (1.0 - smoothstep(0.46, 0.60, abs(nuv.y - 0.5)));
+          alb = mix(alb, c1, clamp(panel, 0.0, 1.0)*0.80*onBack*step(0.5, pattern));
           float lum = dot(c1, vec3(0.299, 0.587, 0.114));
-          vec3 numCol = lum > 0.22 ? vec3(0.02) : vec3(0.78);
-          alb = mix(alb, numCol, glyph*step(0.5, 1.0 - step(0.42, abs(u-0.5))));
+          vec3 numCol = lum > 0.20 ? vec3(0.025) : vec3(0.86);
+          vec3 numEdge = lum > 0.20 ? vec3(0.86) : vec3(0.025);
+          float core = smoothstep(0.45, 0.62, glyph);
+          float edge = smoothstep(0.10, 0.32, glyph) - core;
+          alb = mix(alb, numEdge, clamp(edge, 0.0, 1.0)*0.85*onBack);
+          alb = mix(alb, numCol, core*onBack);
         }
 
         // --- fabric ------------------------------------------------------
@@ -312,6 +335,7 @@ export function createPlayers(env, opts = {}) {
         float mud = clamp(vD.w*smoothstep(0.42, 0.0, v)*fbm(vUv*11.0, 3)*2.2, 0.0, 1.0);
         alb = mix(alb, alb*0.45, sweatMask);
         alb = mix(alb, vec3(0.075, 0.055, 0.038), mud*0.85);
+
 
         Surface s;
         s.P = P; s.N = Nw; s.V = V; s.albedo = alb;
@@ -508,12 +532,15 @@ export function createPlayers(env, opts = {}) {
   });
 
   // --- meshes --------------------------------------------------------------
-  const boneG = withAttrs(boneGeo(0.74, radial, 3, 1, 0.9));
-  const boneSlim = withAttrs(boneGeo(0.82, radial, 2, 0.9, 1.0));
+  // caps ~= the limb radius over its length, so the ends are rounded, not pointed
+  const boneG = withAttrs(boneGeo(0.74, radial, 3, 0.17, 0.15));
+  const boneSlim = withAttrs(boneGeo(0.82, radial, 2, 0.15, 0.17));
   const torsoG = withAttrs(torsoGeo(tier >= 2 ? 20 : 12));
-  const headG = withAttrs(boneGeo(0.96, radial + 2, 3, 1.1, 1.05, 0.88));
-  const hairG = withAttrs(boneGeo(0.90, radial + 2, 2, 0.2, 1.15, 0.9));
-  const bootG = withAttrs(boneGeo(0.58, radial, 2, 0.6, 0.45, 1.25));
+  // a head is an ellipsoid, so its caps are about a third of the neck-to-crown
+  // bone, not a whole one -- otherwise it grows into a cone
+  const headG = withAttrs(boneGeo(0.96, radial + 2, 3, 0.44, 0.40, 0.88));
+  const hairG = withAttrs(boneGeo(0.92, radial + 2, 2, 0.10, 0.80, 0.92));
+  const bootG = withAttrs(boneGeo(0.58, radial, 2, 0.24, 0.17, 1.25));
   const handG = withAttrs(boneGeo(0.85, 8, 1, 1.0, 1.0, 0.8));
 
   const mk = (geo, mat, name) => {

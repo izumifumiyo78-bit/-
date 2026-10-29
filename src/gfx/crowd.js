@@ -155,22 +155,27 @@ export function createCrowd(env, opts = {}) {
         }
         if (arms > 0.5 && head < 0.5 && body < 0.5) alb = mix(skinTone, shirt, step(y, 0.72));
 
-        // folds and shading across the body
-        alb *= 0.82 + 0.26*fbm(vec2(x*5.0, y*7.0) + vSeed.xy*21.0, 2);
+        // Folds, and a deliberately cheap shade: this shader runs for every
+        // pixel of thirty thousand people, so it gets a Lambert term, a
+        // hemisphere ambient and one summed floodlight -- not the full BRDF,
+        // not a shadow lookup (the stands are outside the shadow frustum).
+        alb *= 0.84 + 0.22*hash12(floor(vec2(x*6.0, y*9.0)) + vSeed.xy*17.0);
         float curve = sqrt(max(1.0 - x*x*0.85, 0.0));
 
         vec3 P = vWorld;
-        vec3 N = normalize(vNormalW*vec3(1.0,1.0,1.0) + vec3(x*0.9, 0.0, 0.0));
+        vec3 N = normalize(vec3(vNormalW.xy, 0.55) + vec3(x*0.8, 0.0, 0.0));
         vec3 V = normalize(uCamPos - P);
-        Surface s;
-        s.P = P; s.N = N; s.V = V; s.albedo = alb;
-        s.rough = 0.78; s.metal = 0.0;
-        s.ao = (0.45 + 0.55*curve)*mix(0.55, 1.0, smoothstep(0.0, 0.5, y));
-        s.spec = 0.7;
-        float shadow = getShadowMask();
-        vec3 col = directLight(s, uSunDir, uSunColor)*shadow*curve;
-        col += ambientLight(s);
-        col += floodLights(s)*0.85;
+        float ao = (0.45 + 0.55*curve)*mix(0.55, 1.0, smoothstep(0.0, 0.5, y));
+        float NoL = max(dot(N, uSunDir), 0.0);
+        vec3 col = alb*RECIPROCAL_PI*uSunColor*NoL*curve;
+        col += alb*skyIrradiance(N)*ao;
+        if (uNight > 0.01){
+          // one lumped rig: the stands are far enough that four is wasted
+          vec3 lp = uFlood[0].xyz;
+          vec3 d = lp - P;
+          float att = uFlood[0].w*26000.0/max(dot(d, d), 64.0);
+          col += alb*RECIPROCAL_PI*uFloodColor*att*0.5*uNight*ao*max(dot(N, normalize(d)), 0.25);
+        }
 
         // --- phone flashes -------------------------------------------------
         // Only worth drawing at night, and rare enough to read as individual
