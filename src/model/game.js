@@ -255,7 +255,7 @@ export function newWorld(opts = {}) {
     season: START_YEAR,
     settings: {
       difficulty: opts.difficulty || 'normal',
-      matchMode: 'highlights', speed: 2, quality: 'auto', sound: true, autosave: true, mask: true,
+      matchMode: 'result', speed: 2, quality: 'auto', sound: true, autosave: true, mask: true,
       injuries: true, assistantSubs: false, camera: 'broadcast',
       noSack: true,
     },

@@ -35,7 +35,8 @@ screen('prematch', {
     const G = app.G;
     const f = userFixtureToday(G);
     if (!f) { setTimeout(() => go('home', {}, { root: true }), 0); return ''; }
-    const st = ui('pre', { mode: G.settings.matchMode || 'highlights' });
+    const st = ui('pre', { mode: G.settings.matchMode || 'result' });
+    if (st.mode === 'result') { setTimeout(() => { ensureSelection(G); quickResult(G, f); }, 0); return ''; }
     const h = G.clubs[f.h], a = G.clubs[f.a];
     const me = G.clubs[G.userClub];
     const opp = f.h === G.userClub ? a : h;
