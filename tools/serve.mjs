@@ -4,7 +4,7 @@ import { extname, join, normalize } from 'node:path';
 const root = process.cwd();
 const TYPES = { '.html':'text/html;charset=utf-8', '.js':'text/javascript;charset=utf-8',
   '.css':'text/css;charset=utf-8', '.json':'application/json', '.png':'image/png',
-  '.webmanifest':'application/manifest+json', '.svg':'image/svg+xml', '.md':'text/markdown' };
+  '.webmanifest':'application/manifest+json', '.mjs':'text/javascript;charset=utf-8', '.wasm':'application/wasm', '.task':'application/octet-stream', '.svg':'image/svg+xml', '.md':'text/markdown' };
 http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(req.url.split('?')[0]);
